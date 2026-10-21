@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install qlang
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/quenti77/qlang/main/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: qlang --version
+      - run: qlang test
+      - name: The API page is up to date
+        run: |
+          qlang doc -o /tmp/API.md
+          diff -u API.md /tmp/API.md
