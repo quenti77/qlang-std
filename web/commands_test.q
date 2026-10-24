@@ -3,8 +3,13 @@ import "migrate.q" as mig
 import "commands.q" as commands
 import "../cli.q" as cli
 import "../i18n.q" as i18n
+import "../queue.q" as jobs
 import "test_blog.q" as blog
 import "test_blog_controllers.q" as controllers
+
+struct Ping
+  public ok: bool
+end
 
 fun build() -> cli.Cli
   let app = web.App.new(Reflect.callables(blog))
@@ -22,6 +27,11 @@ fun build() -> cli.Cli
     mig.Migration { id: "002_tags", up: ["CREATE TABLE tags (id INTEGER)"], down: ["DROP TABLE tags"] },
   ] })
   program.container.set(tr)
+  let queue = jobs.Queue.new(db, "sqlite")
+  queue.install().unwrap()
+  queue.max_attempts = 1
+  queue.handle<Ping>(fun(p: Ping) -> string? if p.ok then none else "refused" end end)
+  program.container.set(queue)
   program.add(Reflect.callables(commands))
   program
 end
@@ -62,4 +72,17 @@ fun test_missing_translations_are_listed_with_exit_code_1()
   assert_eq(r.0, 1)
   assert_eq(r.1, "b")
   assert_eq(run(program, ["locale:missing", "en"]).0, 0)
+end
+
+fun test_the_queue_commands_work_and_list_what_failed()
+  let program = build()
+  let queue = program.container.get<jobs.Queue>().unwrap()
+  queue.push(Ping { ok: true }).unwrap()
+  queue.push(Ping { ok: false }).unwrap()
+  assert(run(program, ["queue:work", "--once"]).1.contains("2 job(s) done"))
+  let failed = run(program, ["queue:failed"])
+  assert(failed.1.contains("refused"))
+  assert_eq(run(program, ["queue:retry", "999"]).0, 1)
+  let id = "{queue.failed().unwrap()[0].id}"
+  assert(run(program, ["queue:retry", id]).1.contains("back in the queue"))
 end

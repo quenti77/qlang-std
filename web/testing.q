@@ -141,6 +141,11 @@ impl Client
     self.deliver(self.build(method, path, body))
   end
 
+  --" The request this client would send (its headers and cookies included), without sending it. --"
+  public fun request(self, method: string, path: string, body: string?) -> Request
+    self.build(method, path, body)
+  end
+
   fun build(self, method: string, path: string, body: string?) -> Request
     let query: map<string, string> = {}
     let all: map<string, array<string>> = {}
@@ -198,4 +203,123 @@ impl Client
   end
 end
 
-export Client, Reply
+--" A WebSocket opened on an application without a network: what the server does is done here, one
+event at a time. The callbacks run in the test, so what they write is read with `received`.
+
+```
+let a = WsClient.open(app, "/chat?name=ada")
+a.received()              -- ["welcome ada"]
+a.send("hi")
+a.received()              -- what the handler answered
+```
+--"
+struct WsClient
+  public conn: WebSocket
+  handler: WebSocketHandler
+  pending: array<WsFrame>
+end
+
+impl WsClient
+  --" Opens the WebSocket of `path`; stops the test if the route does not answer with one. --"
+  public fun open(app: web.App, path: string) -> WsClient
+    let r = WsClient.try_open(app, path, {})
+    if r.is_err() then
+      panic(r.unwrap_err().message)
+    end
+    r.unwrap()
+  end
+
+  --" Like `open`, with extra headers (`origin`, `authorization`); `err` says why it did not open
+  (the status the route answered with, for example). --"
+  public fun try_open(app: web.App, path: string, headers: map<string, string>) -> Result<WsClient, Error>
+    let req = Client.new(app).request("GET", path, none)
+    req.headers["upgrade"] = "websocket"
+    req.headers["connection"] = "Upgrade"
+    req.headers["sec-websocket-version"] = "13"
+    req.headers["sec-websocket-key"] = "dGhlIHNhbXBsZSBub25jZQ=="
+    for name in headers.keys() do
+      req.headers[name.lower()] = headers[name] ?? ""
+    end
+    let res = app.handle(req)
+    let handler = res.websocket
+    if handler == none then
+      return Result<WsClient, Error>.Err(Error { message: "not a WebSocket: the route answered {res.status} {res.body}" })
+    end
+    let token = Crypto.token(6)
+    let id = if token.is_ok() then token.unwrap() else "x" end
+    let conn = WebSocket { id: "test-{id}", request: req }
+    let client = WsClient { conn: conn, handler: handler, pending: [] }
+    let on_open = handler.on_open
+    if on_open != none then
+      on_open(conn)
+    end
+    client.collect()
+    Result<WsClient, Error>.Ok(client)
+  end
+
+  fun collect(self)
+    for f in self.conn.take_frames() do
+      self.pending.push(f)
+    end
+  end
+
+  --" The client sends a text message. --"
+  public fun send(self, text: string)
+    self.handler.on_message(self.conn, WsMessage { text: text })
+    self.collect()
+  end
+
+  --" The client sends a binary message. --"
+  public fun send_bytes(self, data: bytes)
+    self.handler.on_message(self.conn, WsMessage { data: data, binary: true })
+    self.collect()
+  end
+
+  --" The time for `on_tick` came. --"
+  public fun tick(self)
+    let on_tick = self.handler.on_tick
+    if on_tick != none then
+      on_tick(self.conn)
+    end
+    self.collect()
+  end
+
+  --" The texts the server sent since the last call. --"
+  public fun received(self) -> array<string>
+    self.collect()
+    let out: array<string> = []
+    for f in self.pending do
+      if f.kind == "text" then
+        out.push(f.text)
+      end
+    end
+    self.pending = []
+    out
+  end
+
+  --" Every frame the server sent since the last call (texts, binaries, a close). --"
+  public fun frames(self) -> array<WsFrame>
+    self.collect()
+    let out = self.pending
+    self.pending = []
+    out
+  end
+
+  --" The client leaves: `on_close` runs. --"
+  public fun close(self)
+    let was_open = self.conn.is_open()
+    self.conn.close()
+    let on_close = self.handler.on_close
+    if was_open and on_close != none then
+      on_close(self.conn)
+    end
+    self.collect()
+  end
+
+  --" Whether the connection is still open (the server may have closed it). --"
+  public fun is_open(self) -> bool
+    self.conn.is_open()
+  end
+end
+
+export Client, Reply, WsClient
