@@ -100,8 +100,8 @@ fun test_a_failed_job_can_be_retried_or_forgotten()
   assert_eq(queue.failed().unwrap().len(), 0)
   assert_eq(queue.work_one().unwrap(), true)
   assert_eq(queue.pending().unwrap(), 0)
-  assert_eq(queue.retry_failed(999).unwrap(), false)
-  assert_eq(queue.forget_failed(999).unwrap(), false)
+  assert_eq(queue.retry_failed("999").unwrap(), false)
+  assert_eq(queue.forget_failed("999").unwrap(), false)
 end
 
 fun test_a_job_without_a_handler_goes_to_the_failed_table()
@@ -114,7 +114,10 @@ end
 
 fun test_a_job_left_running_by_a_dead_worker_is_given_again()
   let clock = [1000000]
-  let queue = fresh(clock)
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let queue = qq.Queue.new(db, "sqlite")
+  queue.clock = fun() -> int clock[0] end
+  queue.install().unwrap()
   let ran = [0]
   queue.handle<Mail>(fun(m: Mail) -> string?
     ran[0] += 1
@@ -122,7 +125,7 @@ fun test_a_job_left_running_by_a_dead_worker_is_given_again()
   end)
   queue.push(Mail { to: "x" }).unwrap()
   -- a worker marked it and died
-  queue.db.execute("UPDATE jobs SET reserved_at = ?, attempts = 1", [Json.number(clock[0] as float)]).unwrap()
+  db.execute("UPDATE jobs SET reserved_at = ?, attempts = 1", [Json.number(clock[0] as float)]).unwrap()
   assert_eq(queue.work_one().unwrap(), false)
   clock[0] += 301000
   assert_eq(queue.work_one().unwrap(), true)

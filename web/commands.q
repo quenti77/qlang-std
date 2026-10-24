@@ -20,7 +20,7 @@ app.main()
 | `db:status` | which migrations are applied | `Migrator`, `Migrations` |
 | `queue:work` (`--once`) | does the jobs of the queue, waiting for new ones unless `--once` | `Queue` (with its handlers) |
 | `queue:failed` | the jobs that gave up | `Queue` |
-| `queue:retry 3` | puts a failed job back in the queue | `Queue` |
+| `queue:retry <id>` | puts a failed job back in the queue | `Queue` |
 | `locale:missing fr` | the keys of the default language that `fr` lacks (exit code `1` if any) | `Translator` |
 
 A command whose services the container lacks is reported by `Cli.validate()`, so only add the ones
@@ -114,12 +114,12 @@ fun queue_failed(queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
   if found.is_err() then
     return Result<int, Error>.Err(found.unwrap_err())
   end
-  console.table(["id", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> ["{j.id}", j.kind, "{j.attempts}", j.error] end))
+  console.table(["id", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> [j.id, j.kind, "{j.attempts}", j.error] end))
   Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("queue:retry", "Puts a failed job back in the queue")]
-fun queue_retry(#[cli.Arg(description: "the id shown by queue:failed")] id: int, queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
+fun queue_retry(#[cli.Arg(description: "the id shown by queue:failed")] id: string, queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
   let again = queue.retry_failed(id)
   if again.is_err() then
     return Result<int, Error>.Err(again.unwrap_err())

@@ -138,3 +138,40 @@ fun test_a_relay_reads_the_bus_once_for_all_the_connections_of_a_worker()
   assert_eq(relay.pump(), 0)
   assert_eq(b.take_frames().len(), 0)
 end
+
+--" Needs a server: QLANG_TEST_REDIS (see queue_redis_test.q). --"
+fun test_redis_pushes_messages_to_every_worker_without_any_query()
+  let url = env.get("QLANG_TEST_REDIS")
+  if url == none then
+    return
+  end
+  let publisher = Redis.connect(url).unwrap()
+  let bus = ws.RedisBus.new(publisher, "wst:")
+  -- two workers: each has its hub, its subscription and its relay
+  let hub_a = ws.Hub.new()
+  let hub_b = ws.Hub.new()
+  let relay_a = ws.Relay.with_feed(ws.RedisFeed.open(url, "wst:").unwrap(), hub_a, 0)
+  let relay_b = ws.Relay.with_feed(ws.RedisFeed.open(url, "wst:").unwrap(), hub_b, 0)
+  let make = fun(id: string) -> WebSocket
+    WebSocket { id: id, request: Request { method: "GET", url: "/", path: "/" } }
+  end
+  let a = make("a")
+  let b = make("b")
+  hub_a.join("lobby", a)
+  relay_a.watch("lobby")
+  hub_b.join("lobby", b)
+  relay_b.watch("lobby")
+  assert_eq(bus.publish("lobby", "hello").unwrap(), 2)
+  assert_eq(bus.publish("other", "ignored").unwrap(), 0)
+  -- the message is on its way: look for it for up to a second
+  let heard = [0, 0]
+  let tries = 0
+  while (heard[0] == 0 or heard[1] == 0) and tries < 100 do
+    heard[0] += relay_a.pump()
+    heard[1] += relay_b.pump()
+    time.sleep(10)
+    tries += 1
+  end
+  assert_eq(a.take_frames().map(fun(f: WsFrame) -> string f.text end), ["hello"])
+  assert_eq(b.take_frames().map(fun(f: WsFrame) -> string f.text end), ["hello"])
+end

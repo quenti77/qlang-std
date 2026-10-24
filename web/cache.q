@@ -16,10 +16,11 @@ Where the texts live is a `Store`:
 | --- | --- | --- |
 | `MemoryStore` (`Cache.memory()`) | the requests of one worker | the worker stops |
 | `FileStore` (`Cache.files("/tmp/cache")`) | every worker of the machine | the lifetime ends (a file per key) |
+| `RedisStore` (`Cache.redis(redis, "app:")`) | every worker of every machine | the lifetime ends (Redis expires the key) |
 
 Each worker of `qlang serve` has its own memory, so a memory cache is a per-worker one: use a
-`FileStore` when every worker must see the same value. Write your own `Store` for Redis, a
-database, etc.
+`FileStore` when every worker of one machine must see the same value, a `RedisStore` when several
+machines must. Write your own `Store` for a database, etc.
 --"
 
 --" Where a cache keeps its texts. `ttl` is in seconds; the store drops an entry once it is older. --"
@@ -27,6 +28,10 @@ trait Store
   fun read(self, key: string) -> string?
   fun write(self, key: string, value: string, ttl: int)
   fun drop(self, key: string)
+  --" Adds 1 to a counter (0 if there is none) and gives the new value; a new counter lives `ttl`
+  seconds. The step is done in one go where the store can (Redis), which is what makes a counter
+  safe to share. --"
+  fun incr(self, key: string, ttl: int) -> int
 end
 
 struct Entry
@@ -64,6 +69,14 @@ impl Store for MemoryStore
 
   public fun drop(self, key: string)
     self.entries.remove(key)
+  end
+
+  public fun incr(self, key: string, ttl: int) -> int
+    let now = int.parse(self.read(key) ?? "0") ?? 0
+    let found = self.entries[key]
+    let until = if found == none then time.now() + ttl * 1000 else found.expires end
+    self.entries[key] = Entry { value: "{now + 1}", expires: until }
+    now + 1
   end
 end
 
@@ -109,6 +122,68 @@ impl Store for FileStore
   public fun drop(self, key: string)
     fs.write(self.path_of(key), "0\n")
   end
+
+  public fun incr(self, key: string, ttl: int) -> int
+    let now = int.parse(self.read(key) ?? "0") ?? 0
+    if now == 0 then
+      self.write(key, "1", ttl)
+    else
+      -- keep the time the counter started with: the file holds it on its first line
+      let text = fs.read(self.path_of(key))
+      if text.is_ok() then
+        let whole = text.unwrap()
+        let cut = whole.index_of("\n") ?? 0
+        fs.write(self.path_of(key), "{whole.substring(0, cut)}\n{now + 1}")
+      end
+    end
+    now + 1
+  end
+end
+
+--" A store in Redis, shared by every worker of every machine. `prefix` is put before each key. --"
+struct RedisStore
+  public redis: Redis
+  public prefix: string
+end
+
+impl RedisStore
+  public fun new(redis: Redis, prefix: string) -> RedisStore
+    RedisStore { redis: redis, prefix: prefix }
+  end
+end
+
+impl Store for RedisStore
+  public fun read(self, key: string) -> string?
+    let r = self.redis.get(self.prefix + key)
+    if r.is_err() then
+      Log.error("cache: {r.unwrap_err().message}")
+      return none
+    end
+    r.unwrap()
+  end
+
+  public fun write(self, key: string, value: string, ttl: int)
+    let r = self.redis.set_ex(self.prefix + key, value, if ttl < 1 then 1 else ttl end)
+    if r.is_err() then
+      Log.error("cache: {r.unwrap_err().message}")
+    end
+  end
+
+  public fun drop(self, key: string)
+    let r = self.redis.del(self.prefix + key)
+    if r.is_err() then
+      Log.error("cache: {r.unwrap_err().message}")
+    end
+  end
+
+  public fun incr(self, key: string, ttl: int) -> int
+    let r = self.redis.eval("local n = redis.call('INCR', KEYS[1]) if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end return n", [self.prefix + key], ["{ttl}"])
+    if r.is_err() or not r.unwrap().is_number() then
+      Log.error("cache: the counter could not be increased")
+      return 0
+    end
+    r.unwrap().as_number() as int
+  end
 end
 
 --" A cache over a store. --"
@@ -125,6 +200,17 @@ impl Cache
   --" A cache in the memory of the worker. --"
   public fun memory() -> Cache
     Cache.new(MemoryStore.new())
+  end
+
+  --" A cache in Redis (shared by every worker of every machine); keys start with `prefix`. --"
+  public fun redis(redis: Redis, prefix: string) -> Cache
+    Cache.new(RedisStore.new(redis, prefix))
+  end
+
+  --" Adds 1 to a counter and gives the new value; a new counter lives `ttl` seconds. Atomic in
+  Redis, so a limit shared by several workers stays exact. --"
+  public fun increment(self, key: string, ttl: int) -> int
+    self.store.incr(self.prefix + key, ttl)
   end
 
   --" A cache in files of `dir` (shared by the workers). --"
@@ -190,4 +276,4 @@ impl Cache
   end
 end
 
-export Store, MemoryStore, FileStore, Cache
+export Store, MemoryStore, FileStore, RedisStore, Cache

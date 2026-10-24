@@ -10,7 +10,8 @@ app.use(rate_limit(cache, 5, 60, by_path_and_header("authorization")))
 ```
 
 The counters live in the cache: a memory cache counts per worker (a limit of 100 with four
-workers lets up to 400 through), a file cache counts for the machine. Behind a proxy, count by the
+workers lets up to 400 through), a file cache counts for the machine, a Redis cache
+(`Cache.redis(redis, "limit:")`) counts exactly for every machine (the count is one atomic step). Behind a proxy, count by the
 header the proxy sets (`x-forwarded-for`); do not trust that header when the client can reach the
 server directly, since it can then write anything in it.
 --"
@@ -38,7 +39,7 @@ fun rate_limit(cache: cc.Cache, limit: int, seconds: int, key_of: fun(Request) -
   fun(req: Request, next: web.Handler) -> Response
     let window = time.now() div (seconds * 1000)
     let key = "{key_of(req)}@{window}"
-    let seen = counters.get<int>(key) ?? 0
+    let seen = counters.increment(key, seconds * 2) - 1
     if seen >= limit then
       let left = seconds - (time.now() div 1000) mod seconds
       let res = web.Problem { status: 429, message: "Too Many Requests" }.to_response()
@@ -47,7 +48,6 @@ fun rate_limit(cache: cc.Cache, limit: int, seconds: int, key_of: fun(Request) -
       res.headers["X-RateLimit-Remaining"] = "0"
       return res
     end
-    counters.put<int>(key, seen + 1, seconds * 2)
     let res = next(req)
     res.headers["X-RateLimit-Limit"] = "{limit}"
     res.headers["X-RateLimit-Remaining"] = "{limit - seen - 1}"
