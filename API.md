@@ -166,14 +166,15 @@ The built-in plural rule of a language.
 
 ## `struct JobRow`
 
-A job the queue holds.
+A job the queue holds. `id` and `token` belong to the driver.
 
 **Fields**
 
-- `id: int`
+- `id: string`
 - `kind: string`
 - `payload: string`
 - `attempts: int`
+- `token: string`
 
 ## `struct FailedJob`
 
@@ -181,11 +182,65 @@ A job that gave up.
 
 **Fields**
 
-- `id: int`
+- `id: string`
 - `kind: string`
 - `payload: string`
 - `attempts: int`
 - `error: string`
+
+## `trait QueueDriver`
+
+Where the jobs are kept: what a `Queue` needs from the database or from Redis. Times are in
+milliseconds.
+
+## `struct DbDriver`
+
+The jobs in a SQL database.
+
+**Fields**
+
+- `db: Db`
+- `dialect: string`
+- `table: string` — The name of the table of waiting jobs; the failed ones are in `{table}_failed`.
+
+**Methods**
+
+- `fun install() -> Result<bool, Error>`
+- `fun push(kind: string, payload: string, available_at: int, now: int) -> Result<bool, Error>`
+- `fun waits() -> bool`
+- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>`
+- `fun done(job: JobRow) -> Result<bool, Error>`
+- `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
+- `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
+- `fun pending() -> Result<int, Error>`
+- `fun failed() -> Result<array<FailedJob>, Error>`
+- `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
+- `fun forget_failed(id: string) -> Result<bool, Error>`
+
+## `struct RedisDriver`
+
+The jobs in Redis, like Laravel's Redis queue: the ready jobs are a list, the delayed ones and the
+running ones sorted sets (by the time they are due, by the time their reservation ends), and a worker
+with nothing to do waits on a list that every push writes to, so a new job is picked up at once.
+
+**Fields**
+
+- `redis: Redis`
+- `name: string` — The name of the queue; the keys are `queues:{name}`, `queues:{name}:delayed`...
+
+**Methods**
+
+- `fun install() -> Result<bool, Error>`
+- `fun waits() -> bool`
+- `fun push(kind: string, payload: string, available_at: int, now: int) -> Result<bool, Error>`
+- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>`
+- `fun done(job: JobRow) -> Result<bool, Error>`
+- `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
+- `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
+- `fun pending() -> Result<int, Error>`
+- `fun failed() -> Result<array<FailedJob>, Error>`
+- `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
+- `fun forget_failed(id: string) -> Result<bool, Error>`
 
 ## `struct Queue`
 
@@ -193,26 +248,27 @@ The queue and its handlers.
 
 **Fields**
 
-- `db: Db`
-- `dialect: string`
-- `table: string` — The name of the table of waiting jobs; the failed ones are in `{table}_failed`.
+- `driver: QueueDriver`
 - `max_attempts: int`
 - `timeout: int` — Seconds after which a job that is still marked as running is given to another worker.
+- `wait: int` — With Redis: seconds a worker waits for a new job before it looks again.
 - `clock: fun() -> int` — The time in milliseconds; tests give their own.
 
 **Methods**
 
 - `fun new(db: Db, dialect: string) -> Queue` — A queue in `db`; `dialect` is `"sqlite"`, `"postgres"` or `"mysql"` (it only changes how the tables are made).
-- `fun install() -> Result<bool, Error>` — Makes the tables if they do not exist.
+- `fun redis(redis: Redis, name: string) -> Queue` — A queue in Redis, under the name `name` (`"default"`).
+- `fun with(driver: QueueDriver) -> Queue` — A queue on a driver of your own.
+- `fun install() -> Result<bool, Error>` — Makes the tables if they do not exist (checks the connection with Redis).
 - `fun handle(handler: fun(T) -> string?)` — Says what to do with the jobs of type `T`: `none` when it is done, otherwise why it failed.
 - `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free.
 - `fun push_in(job: T, seconds: int) -> Result<bool, Error>` — Writes a job down, to be done after `seconds`.
 - `fun pending() -> Result<int, Error>` — How many jobs wait (or run).
 - `fun work_one() -> Result<bool, Error>` — Does the next due job. Gives `true` when there was one (done or failed), `false` when none was due.
-- `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones and never returns. A database error ends it with that error.
+- `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones and never returns (with Redis the wait is on the queue itself, so a new job starts at once; with a database the worker looks again every second). A database error ends it with that error.
 - `fun failed() -> Result<array<FailedJob>, Error>` — The jobs that gave up, oldest first.
-- `fun retry_failed(id: int) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id.
-- `fun forget_failed(id: int) -> Result<bool, Error>` — Deletes a failed job. `false` if there is none with this id.
+- `fun retry_failed(id: string) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id.
+- `fun forget_failed(id: string) -> Result<bool, Error>` — Deletes a failed job. `false` if there is none with this id.
 
 # template.q
 
@@ -389,6 +445,7 @@ A store in the memory of the worker.
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
+- `fun incr(key: string, ttl: int) -> int`
 
 ## `struct FileStore`
 
@@ -401,6 +458,24 @@ moment (milliseconds) its entry expires.
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
+- `fun incr(key: string, ttl: int) -> int`
+
+## `struct RedisStore`
+
+A store in Redis, shared by every worker of every machine. `prefix` is put before each key.
+
+**Fields**
+
+- `redis: Redis`
+- `prefix: string`
+
+**Methods**
+
+- `fun new(redis: Redis, prefix: string) -> RedisStore`
+- `fun read(key: string) -> string?`
+- `fun write(key: string, value: string, ttl: int)`
+- `fun drop(key: string)`
+- `fun incr(key: string, ttl: int) -> int`
 
 ## `struct Cache`
 
@@ -410,6 +485,8 @@ A cache over a store.
 
 - `fun new(store: Store) -> Cache`
 - `fun memory() -> Cache` — A cache in the memory of the worker.
+- `fun redis(redis: Redis, prefix: string) -> Cache` — A cache in Redis (shared by every worker of every machine); keys start with `prefix`.
+- `fun increment(key: string, ttl: int) -> int` — Adds 1 to a counter and gives the new value; a new counter lives `ttl` seconds. Atomic in Redis, so a limit shared by several workers stays exact.
 - `fun files(dir: string) -> Cache` — A cache in files of `dir` (shared by the workers).
 - `fun scoped(name: string) -> Cache` — The same store, with `name:` put before every key (one cache per feature).
 - `fun get_text(key: string) -> string?` — The text under `key`, or `none` when there is none or it has expired.
@@ -853,6 +930,90 @@ Messages shared by every worker through a table.
 - `fun since(room: string, after: int) -> array<(int, string)>` — The messages of the room after number `after`, oldest first, as (number, text).
 - `fun deliver(conn: WebSocket, room: string)` — Sends to the connection what was published in the room since the last time it was asked (`conn.data["cursor:room"]` remembers where it stopped). Call it from `on_tick`.
 - `fun prune(seconds: int) -> Result<int, Error>` — Deletes the messages older than `seconds`. Run it from time to time.
+
+## `trait Feed`
+
+Where a `Relay` takes the messages from: the database (`DbFeed`) or Redis (`RedisFeed`).
+
+## `struct DbFeed`
+
+The messages of a `Bus` (the database), read after the last one seen in each room.
+
+**Fields**
+
+- `bus: Bus`
+
+**Methods**
+
+- `fun new(bus: Bus) -> DbFeed`
+- `fun watch(room: string)`
+- `fun pull(active: array<string>) -> array<(string, string)>`
+
+## `struct RedisFeed`
+
+The messages of Redis channels (`ws:{room}`): the worker subscribes once per room, Redis pushes the
+messages, and `pull` only reads what already arrived: no query at all while nothing is said.
+
+**Fields**
+
+- `sub: Subscription`
+- `prefix: string`
+
+**Methods**
+
+- `fun open(url: string, prefix: string) -> Result<RedisFeed, Error>` — Opens the connection that listens. Channels are named `{prefix}{room}`.
+- `fun watch(room: string)`
+- `fun pull(active: array<string>) -> array<(string, string)>`
+
+## `struct RedisBus`
+
+Publishes to the Redis channels a `RedisFeed` listens to.
+
+**Fields**
+
+- `redis: Redis`
+- `prefix: string`
+
+**Methods**
+
+- `fun new(redis: Redis, prefix: string) -> RedisBus`
+- `fun publish(room: string, text: string) -> Result<int, Error>` — Sends a text to the room, on every worker of every machine. Gives how many workers listen.
+
+## `struct Relay`
+
+Brings what a feed holds to the connections of **this worker**, with one read per room and
+interval whatever the number of connections (none at all with Redis, which pushes): the read is
+shared, the fan-out is in memory (through a `Hub`). Make one per worker, next to the hub.
+
+```
+let hub = ws.Hub.new()
+let relay = ws.Relay.new(bus, hub, 250)                   -- a bus in the database
+-- or: let relay = ws.Relay.with_feed(redis_feed, hub, 50)   -- Redis
+-- in the handler:
+on_open: fun(c: WebSocket)
+  hub.join("lobby", c)
+  relay.watch("lobby")
+end,
+on_tick: fun(c: WebSocket) relay.pump() end,
+```
+
+Every connection may call `pump` from its tick: the call returns at once unless the interval has
+passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls
+and one read per room each `interval`, instead of one query per connection.
+
+**Fields**
+
+- `feed: Feed`
+- `hub: Hub`
+- `interval: int`
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(bus: Bus, hub: Hub, interval: int) -> Relay` — A relay on the bus in the database; `interval` is the number of milliseconds between two reads.
+- `fun with_feed(feed: Feed, hub: Hub, interval: int) -> Relay`
+- `fun watch(room: string)` — Starts listening to a room.
+- `fun pump() -> int` — Reads the new messages (if the interval passed) and sends them to the members of the hub. Gives how many messages were read.
 
 ## `fun origin_guard(allowed: array<string>) -> fun(Request) -> Response?`
 
