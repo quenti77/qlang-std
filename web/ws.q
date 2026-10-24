@@ -24,11 +24,15 @@ nothing). Two tools cover that:
 
 - `Hub` keeps the connections of **one worker** in rooms: `join`, `leave`, `broadcast`. Use it with
   `--workers 1`, or for what only concerns the connection itself.
-- `Bus` goes through the **database**: `publish(room, text)` writes a message and every worker sees it.
-  Give each worker a `Relay` (a `Hub` plus the bus): it reads the bus **once per interval and room**,
-  whatever the number of connections, and fans the messages out in memory. (`Bus.deliver` reads once per
-  *connection*: fine for a few dozen, no more.) A relay interval of a few hundred milliseconds feels
-  instant for a chat; for more than a few thousand connections, use a message broker.
+- Every worker gets a `Relay` (a `Hub` plus a *feed*): it brings the messages to the connections of its
+  worker with **one read per interval and room**, whatever the number of connections, and fans them out
+  in memory. Two feeds:
+  - `Bus` + `DbFeed` go through the **database**: `bus.publish(room, text)` writes a row and every relay
+    reads the new rows. Nothing else to run; a relay interval of a few hundred milliseconds feels instant
+    for a chat. (`Bus.deliver` reads once per *connection*: fine for a few dozen, no more.)
+  - `RedisBus` + `RedisFeed` go through **Redis** publish/subscribe: each worker subscribes once per
+    room and Redis pushes the messages, so nothing is read while nobody speaks, and the interval can be
+    50 ms. This is what a real deployment (Laravel Reverb, Socket.IO adapters...) does.
 --"
 import "app.q" as web
 
@@ -167,66 +171,179 @@ impl Bus
   end
 end
 
---" Brings what the bus holds to the connections of **this worker**, with one read per room and
-interval whatever the number of connections: the read is shared, the fan-out is in memory (through
-a `Hub`). Make one per worker, next to the hub.
-
-```
-let hub = ws.Hub.new()
-let relay = ws.Relay.new(bus, hub, 250)
--- in the handler:
-on_open: fun(c: WebSocket)
-  hub.join("lobby", c)
-  relay.watch("lobby")
-end,
-on_message: fun(c: WebSocket, m: WsMessage) bus.publish("lobby", m.text ?? "").unwrap() end,
-on_tick: fun(c: WebSocket) relay.pump() end,
-```
-
-Every connection may call `pump` from its tick: the call returns at once unless the interval has
-passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls
-and one query per room each `interval`, instead of one query per connection. --"
-struct Relay
-  public bus: Bus
-  public hub: Hub
-  public interval: int
-  cursors: map<string, int>
-  last: int
+--" Where a `Relay` takes the messages from: the database (`DbFeed`) or Redis (`RedisFeed`). --"
+trait Feed
+  --" Starts listening to a room: only what is published from now on is delivered. --"
+  fun watch(self, room: string)
+  --" The messages that arrived since the last call, as (room, text). `active` are the rooms that have
+  members here: a feed may skip the others. --"
+  fun pull(self, active: array<string>) -> array<(string, string)>
 end
 
-impl Relay
-  --" `interval` is the number of milliseconds between two reads of the bus. --"
-  public fun new(bus: Bus, hub: Hub, interval: int) -> Relay
-    Relay { bus: bus, hub: hub, interval: interval, cursors: {}, last: 0 }
-  end
+--" The messages of a `Bus` (the database), read after the last one seen in each room. --"
+struct DbFeed
+  public bus: Bus
+  cursors: map<string, int>
+end
 
-  --" Starts listening to a room: only what is published from now on is delivered. --"
+impl DbFeed
+  public fun new(bus: Bus) -> DbFeed
+    DbFeed { bus: bus, cursors: {} }
+  end
+end
+
+impl Feed for DbFeed
   public fun watch(self, room: string)
     if self.cursors[room] == none then
       self.cursors[room] = self.bus.last(room)
     end
   end
 
-  --" Reads the new messages of the watched rooms (if the interval passed) and sends them to the
-  members of the hub. Gives how many messages were read. --"
-  public fun pump(self) -> int
-    let now = self.bus.clock()
-    if now - self.last < self.interval then
-      return 0
-    end
-    self.last = now
-    let read = 0
+  public fun pull(self, active: array<string>) -> array<(string, string)>
+    let out: array<(string, string)> = []
     for room in self.cursors.keys() do
-      if self.hub.count(room) == 0 then
+      if not active.contains(room) then
         -- nobody here listens: skip the read, and start again from the end when someone joins
         self.cursors[room] = self.bus.last(room)
         continue
       end
       for m in self.bus.since(room, self.cursors[room] ?? 0) do
-        self.hub.broadcast(room, m.1, none)
+        out.push((room, m.1))
         self.cursors[room] = m.0
-        read += 1
       end
+    end
+    out
+  end
+end
+
+--" The messages of Redis channels (`ws:{room}`): the worker subscribes once per room, Redis pushes the
+messages, and `pull` only reads what already arrived: no query at all while nothing is said. --"
+struct RedisFeed
+  public sub: Subscription
+  public prefix: string
+  watched: array<string>
+end
+
+impl RedisFeed
+  --" Opens the connection that listens. Channels are named `{prefix}{room}`. --"
+  public fun open(url: string, prefix: string) -> Result<RedisFeed, Error>
+    let sub = Redis.subscriber(url, [])
+    if sub.is_err() then
+      return Result<RedisFeed, Error>.Err(sub.unwrap_err())
+    end
+    Result<RedisFeed, Error>.Ok(RedisFeed { sub: sub.unwrap(), prefix: prefix, watched: [] })
+  end
+end
+
+impl Feed for RedisFeed
+  public fun watch(self, room: string)
+    if not self.watched.contains(room) then
+      let r = self.sub.subscribe([self.prefix + room])
+      if r.is_err() then
+        Log.error("ws: {r.unwrap_err().message}")
+        return
+      end
+      self.watched.push(room)
+    end
+  end
+
+  public fun pull(self, active: array<string>) -> array<(string, string)>
+    let out: array<(string, string)> = []
+    let count = 0
+    while count < 500 do
+      let m = self.sub.next(0)
+      if m.is_err() then
+        Log.error("ws: {m.unwrap_err().message}")
+        break
+      end
+      let msg = m.unwrap()
+      if msg == none then
+        break
+      end
+      if msg.channel.starts_with(self.prefix) then
+        out.push((msg.channel.substring(self.prefix.len(), msg.channel.len()), msg.payload))
+      end
+      count += 1
+    end
+    out
+  end
+end
+
+--" Publishes to the Redis channels a `RedisFeed` listens to. --"
+struct RedisBus
+  public redis: Redis
+  public prefix: string
+end
+
+impl RedisBus
+  public fun new(redis: Redis, prefix: string) -> RedisBus
+    RedisBus { redis: redis, prefix: prefix }
+  end
+
+  --" Sends a text to the room, on every worker of every machine. Gives how many workers listen. --"
+  public fun publish(self, room: string, text: string) -> Result<int, Error>
+    self.redis.publish(self.prefix + room, text)
+  end
+end
+
+--" Brings what a feed holds to the connections of **this worker**, with one read per room and
+interval whatever the number of connections (none at all with Redis, which pushes): the read is
+shared, the fan-out is in memory (through a `Hub`). Make one per worker, next to the hub.
+
+```
+let hub = ws.Hub.new()
+let relay = ws.Relay.new(bus, hub, 250)                   -- a bus in the database
+-- or: let relay = ws.Relay.with_feed(redis_feed, hub, 50)   -- Redis
+-- in the handler:
+on_open: fun(c: WebSocket)
+  hub.join("lobby", c)
+  relay.watch("lobby")
+end,
+on_tick: fun(c: WebSocket) relay.pump() end,
+```
+
+Every connection may call `pump` from its tick: the call returns at once unless the interval has
+passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls
+and one read per room each `interval`, instead of one query per connection. --"
+struct Relay
+  public feed: Feed
+  public hub: Hub
+  public interval: int
+  --" The time in milliseconds; tests give their own. --"
+  public clock: fun() -> int
+  last: int
+end
+
+impl Relay
+  --" A relay on the bus in the database; `interval` is the number of milliseconds between two reads. --"
+  public fun new(bus: Bus, hub: Hub, interval: int) -> Relay
+    let r = Relay.with_feed(DbFeed.new(bus), hub, interval)
+    r.clock = bus.clock
+    r
+  end
+
+  public fun with_feed(feed: Feed, hub: Hub, interval: int) -> Relay
+    Relay { feed: feed, hub: hub, interval: interval, clock: fun() -> int time.now() end, last: 0 }
+  end
+
+  --" Starts listening to a room. --"
+  public fun watch(self, room: string)
+    self.feed.watch(room)
+  end
+
+  --" Reads the new messages (if the interval passed) and sends them to the members of the hub.
+  Gives how many messages were read. --"
+  public fun pump(self) -> int
+    let now = self.clock()
+    if now - self.last < self.interval then
+      return 0
+    end
+    self.last = now
+    let active = self.hub.rooms.keys().filter(fun(r: string) -> bool self.hub.count(r) > 0 end)
+    let read = 0
+    for m in self.feed.pull(active) do
+      self.hub.broadcast(m.0, m.1, none)
+      read += 1
     end
     read
   end
@@ -245,4 +362,4 @@ fun origin_guard(allowed: array<string>) -> web.GuardFn
   end
 end
 
-export Hub, Bus, Relay, origin_guard
+export Hub, Bus, Feed, DbFeed, RedisFeed, RedisBus, Relay, origin_guard

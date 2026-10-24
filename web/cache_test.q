@@ -55,3 +55,31 @@ fun test_files_keep_values_between_caches()
   two.forget("qlang-std-cache-test")
   assert_eq(one.get<string>("qlang-std-cache-test"), none)
 end
+
+fun test_counters_add_one_and_expire()
+  let cache = c.Cache.memory()
+  assert_eq(cache.increment("hits", 60), 1)
+  assert_eq(cache.increment("hits", 60), 2)
+  assert_eq(cache.scoped("other").increment("hits", 60), 1)
+end
+
+--" Needs a server: QLANG_TEST_REDIS (see queue_redis_test.q). --"
+fun test_redis_shares_values_and_counts_exactly()
+  let url = env.get("QLANG_TEST_REDIS")
+  if url == none then
+    return
+  end
+  let r = Redis.connect(url).unwrap()
+  r.command(["FLUSHDB"]).unwrap()
+  let one = c.Cache.redis(r, "t:")
+  let two = c.Cache.redis(Redis.connect(url).unwrap(), "t:")
+  one.put("n", 42, 60)
+  assert_eq(two.get<int>("n"), 42)
+  assert_eq(two.remember<int>("k", 60, fun() -> int 7 end), 7)
+  assert_eq(one.get<int>("k"), 7)
+  one.forget("n")
+  assert_eq(two.get<int>("n"), none)
+  assert_eq(one.increment("hits", 60), 1)
+  assert_eq(two.increment("hits", 60), 2)
+  assert_eq(one.increment("hits", 60), 3)
+end
