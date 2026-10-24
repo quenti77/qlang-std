@@ -172,7 +172,9 @@ impl Client
     for name in self.cookies.keys() do
       cookies[name] = self.cookies[name] ?? ""
     end
-    Request { method: method.upper(), url: path, path: clean, query: query, query_all: all, headers: headers, body: body, cookies: cookies }
+    let text = body
+    let raw: bytes? = if text == none then none else text.to_bytes() end
+    Request { method: method.upper(), url: path, path: clean, query: query, query_all: all, headers: headers, body: body, raw: raw, cookies: cookies }
   end
 
   fun deliver(self, req: Request) -> Reply

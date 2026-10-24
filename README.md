@@ -64,7 +64,7 @@ import "@std/web/middleware.q" as mw
 | [`web/query.q`](web/query.q) | constructeur de requêtes SQL avec `?` partout et noms vérifiés ; lignes lues comme des structures |
 | [`web/migrate.q`](web/migrate.q) | migrations (`up` / `down`) appliquées dans une transaction, mémorisées dans `schema_migrations` |
 | [`web/session.q`](web/session.q) | sessions dans un cookie signé, messages flash, protection CSRF |
-| [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `json<T>()`, `expect_status` |
+| [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `post_form`, `json<T>()`, `expect_status` |
 | [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
 | [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`) sur un `Store` : mémoire du worker ou fichiers partagés |
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` |
@@ -92,6 +92,12 @@ Des routes peuvent aussi être les méthodes d'une structure : `#[web.Controller
 structure, `#[web.Get("/:id")]` sur ses méthodes publiques, puis `app.controller(Posts { ... })`
 (ou `app.controller_from_container<Posts>()` si un fournisseur rend une `Posts`). L'instance vit
 autant que l'application : ce qui change à chaque requête arrive en paramètre de la méthode.
+
+Des **gardes** protègent des routes : `app.guard("auth", fun(req: Request) -> Response? ... end)`
+rend `none` pour laisser passer ou une réponse pour arrêter ; `#[web.Guard("auth")]` sur une
+fonction, une méthode ou toute une structure contrôleur les applique. `#[web.Body]` lit aussi un
+formulaire `application/x-www-form-urlencoded`. Un exemple complet avec comptes, sessions, mots de
+passe et tâches est dans [`examples/tasks`](examples/tasks) ; le guide du site le suit pas à pas.
 
 Les annotations s'écrivent avec le nom du module (`web.Get`) : `Post`, `Delete`... sont des noms de
 modèles trop courants pour les prendre.
