@@ -162,6 +162,58 @@ The language part of a tag: `fr` for `fr-CA` and `fr_CA`.
 
 The built-in plural rule of a language.
 
+# queue.q
+
+## `struct JobRow`
+
+A job the queue holds.
+
+**Fields**
+
+- `id: int`
+- `kind: string`
+- `payload: string`
+- `attempts: int`
+
+## `struct FailedJob`
+
+A job that gave up.
+
+**Fields**
+
+- `id: int`
+- `kind: string`
+- `payload: string`
+- `attempts: int`
+- `error: string`
+
+## `struct Queue`
+
+The queue and its handlers.
+
+**Fields**
+
+- `db: Db`
+- `dialect: string`
+- `table: string` — The name of the table of waiting jobs; the failed ones are in `{table}_failed`.
+- `max_attempts: int`
+- `timeout: int` — Seconds after which a job that is still marked as running is given to another worker.
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(db: Db, dialect: string) -> Queue` — A queue in `db`; `dialect` is `"sqlite"`, `"postgres"` or `"mysql"` (it only changes how the tables are made).
+- `fun install() -> Result<bool, Error>` — Makes the tables if they do not exist.
+- `fun handle(handler: fun(T) -> string?)` — Says what to do with the jobs of type `T`: `none` when it is done, otherwise why it failed.
+- `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free.
+- `fun push_in(job: T, seconds: int) -> Result<bool, Error>` — Writes a job down, to be done after `seconds`.
+- `fun pending() -> Result<int, Error>` — How many jobs wait (or run).
+- `fun work_one() -> Result<bool, Error>` — Does the next due job. Gives `true` when there was one (done or failed), `false` when none was due.
+- `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones and never returns. A database error ends it with that error.
+- `fun failed() -> Result<array<FailedJob>, Error>` — The jobs that gave up, oldest first.
+- `fun retry_failed(id: int) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id.
+- `fun forget_failed(id: int) -> Result<bool, Error>` — Deletes a failed job. `false` if there is none with this id.
+
 # template.q
 
 ## `fun render(source: string, data: Json) -> Result<string, Error>`
@@ -674,6 +726,35 @@ Sends requests to an application.
 - `fun put_json(path: string, value: T) -> Reply`
 - `fun send_json(method: string, path: string, value: T) -> Reply`
 - `fun send(method: string, path: string, body: string?) -> Reply` — Sends a request. A query string in `path` is read as the server would.
+- `fun request(method: string, path: string, body: string?) -> Request` — The request this client would send (its headers and cookies included), without sending it.
+
+## `struct WsClient`
+
+A WebSocket opened on an application without a network: what the server does is done here, one
+event at a time. The callbacks run in the test, so what they write is read with `received`.
+
+```
+let a = WsClient.open(app, "/chat?name=ada")
+a.received()              -- ["welcome ada"]
+a.send("hi")
+a.received()              -- what the handler answered
+```
+
+**Fields**
+
+- `conn: WebSocket`
+
+**Methods**
+
+- `fun open(app: App, path: string) -> WsClient` — Opens the WebSocket of `path`; stops the test if the route does not answer with one.
+- `fun try_open(app: App, path: string, headers: map<string, string>) -> Result<WsClient, Error>` — Like `open`, with extra headers (`origin`, `authorization`); `err` says why it did not open (the status the route answered with, for example).
+- `fun send(text: string)` — The client sends a text message.
+- `fun send_bytes(data: bytes)` — The client sends a binary message.
+- `fun tick()` — The time for `on_tick` came.
+- `fun received() -> array<string>` — The texts the server sent since the last call.
+- `fun frames() -> array<WsFrame>` — Every frame the server sent since the last call (texts, binaries, a close).
+- `fun close()` — The client leaves: `on_close` runs.
+- `fun is_open() -> bool` — Whether the connection is still open (the server may have closed it).
 
 # web/validate.q
 
@@ -733,4 +814,49 @@ Checks values against the rules written on their fields.
 - `fun rule(name: string, check: fun(AnnotationInfo, Any) -> string?)` — Adds a rule called like an annotation of yours (`#[Slug]`). `check` gives the message that says what is wrong with the value, or `none` if it is fine.
 - `fun check(value: Any) -> array<FieldError>` — Everything wrong with `value`, a structure held by an `Any`.
 - `fun is_valid(value: Any) -> bool` — Whether `value` has no error.
+
+# web/ws.q
+
+## `struct Hub`
+
+The connections of one worker, in rooms.
+
+**Fields**
+
+- `rooms: map<string, array<WebSocket>>`
+
+**Methods**
+
+- `fun new() -> Hub`
+- `fun join(room: string, conn: WebSocket)` — Puts the connection in a room.
+- `fun leave(conn: WebSocket)` — Takes the connection out of every room. Call it in `on_close`.
+- `fun count(room: string) -> int` — How many connections are in the room.
+- `fun broadcast(room: string, text: string, except: string?) -> int` — Sends a text to everybody in the room except `except` (a connection id, or `none`). Gives how many received it.
+
+## `struct Bus`
+
+Messages shared by every worker through a table.
+
+**Fields**
+
+- `db: Db`
+- `table: string`
+- `dialect: string`
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(db: Db, dialect: string) -> Bus` — A bus on `db`; `dialect` is `"sqlite"`, `"postgres"` or `"mysql"`.
+- `fun install() -> Result<bool, Error>` — Makes the table if it does not exist.
+- `fun publish(room: string, text: string) -> Result<bool, Error>` — Writes a message for the room.
+- `fun last(room: string) -> int` — The number of the last message of the room (0 if none): where a new connection starts, so that it only hears what comes after.
+- `fun since(room: string, after: int) -> array<(int, string)>` — The messages of the room after number `after`, oldest first, as (number, text).
+- `fun deliver(conn: WebSocket, room: string)` — Sends to the connection what was published in the room since the last time it was asked (`conn.data["cursor:room"]` remembers where it stopped). Call it from `on_tick`.
+- `fun prune(seconds: int) -> Result<int, Error>` — Deletes the messages older than `seconds`. Run it from time to time.
+
+## `fun origin_guard(allowed: array<string>) -> fun(Request) -> Response?`
+
+A guard that only lets through the requests whose `Origin` is one of these (or that have none,
+which is the case of programs that are not browsers). Register it with `app.guard("origin", ...)`
+and put `#[web.Guard("origin")]` on the WebSocket route.
 
