@@ -1,5 +1,8 @@
 import "app.q" as web
 import "middleware.q" as mw
+import "testing.q" as testing
+import "test_blog.q" as blog
+import "test_blog_controllers.q" as controllers
 
 fun app_with(m: web.Middleware) -> web.App
   let app = web.App.new([])
@@ -64,4 +67,25 @@ fun test_logging_does_not_change_the_answer()
   let app = app_with(mw.logging())
   assert_eq(app.handle(req("GET", "/hi")).body, "hi")
   assert_eq(app.handle(req("GET", "/missing")).status, 404)
+end
+
+fun test_cors_options_shape_the_preflight_and_the_answers()
+  let app = web.App.new(Reflect.callables(blog))
+  app.controllers(Reflect.callables(controllers))
+  app.use(mw.cors_with(mw.CorsOptions { origins: ["https://a.example"], methods: ["GET"], headers: ["X-Token"], expose: ["X-Request-Id"], credentials: true, max_age: 30 }))
+  let client = testing.Client.new(app)
+  client.header("Origin", "https://a.example")
+  let ok = client.get("/posts")
+  assert_eq(ok.header("access-control-allow-origin"), "https://a.example")
+  assert_eq(ok.header("access-control-allow-credentials"), "true")
+  assert_eq(ok.header("access-control-expose-headers"), "X-Request-Id")
+  client.header("Access-Control-Request-Method", "GET")
+  let pre = client.send("OPTIONS", "/posts", none)
+  assert_eq(pre.status, 204)
+  assert_eq(pre.header("access-control-allow-methods"), "GET")
+  assert_eq(pre.header("access-control-allow-headers"), "X-Token")
+  assert_eq(pre.header("access-control-max-age"), "30")
+  let other = testing.Client.new(app)
+  other.header("Origin", "https://evil.example")
+  assert_eq(other.get("/posts").header("access-control-allow-origin"), none)
 end
