@@ -47,6 +47,9 @@ import "validate.q" as val
 --" A function from a request to a response. --"
 type Handler = fun(Request) -> Response
 
+--" Decides whether a request may go on: `none` lets it through, a response ends it there. --"
+type GuardFn = fun(Request) -> Response?
+
 --" Code around a handler: it receives the request and the next handler, and answers. --"
 type Middleware = fun(Request, Handler) -> Response
 
@@ -61,6 +64,13 @@ all under this prefix. See `App.controller`. --"
 #[annotation]
 struct Controller
   prefix: string = ""
+end
+
+--" `#[Guard("auth")]` on a route or on a controller: the guard of that name (`App.guard`) runs
+before the handler, and may answer instead (`401`, a redirect...). Several can be stacked. --"
+#[annotation]
+struct Guard
+  name: string
 end
 
 --" `#[Doc("Lists the posts")]`: what a route does, for the generated documentation (`openapi`). --"
@@ -187,6 +197,8 @@ struct RouteDef
   public needs: array<string>
   --" The function or method that answers, for routes made from one. --"
   public source: Callable?
+  --" The names of the guards that run before it. --"
+  public guards: array<string>
 end
 
 fun problem<T>(status: int, message: string) -> Result<T, Problem>
@@ -264,6 +276,55 @@ fun name_of(p: ParamInfo, a: AnnotationInfo) -> string
   if given == none or given == "" then p.name else given end
 end
 
+fun is_form(req: Request) -> bool
+  let kind = req.header("content-type") ?? ""
+  kind.lower().starts_with("application/x-www-form-urlencoded")
+end
+
+--" A form read as the JSON the body type expects: each field is turned into a number or a
+boolean when the field of the type is one. Fields that the type does not have are dropped. --"
+fun form_json(req: Request, p: ParamInfo) -> Result<Json, Error>
+  let form = req.form()
+  if form.is_err() then
+    return Result<Json, Error>.Err(form.unwrap_err())
+  end
+  let values = form.unwrap()
+  let shape = p.type_info()
+  let out: map<string, Json> = {}
+  for f in shape.fields do
+    let text = values[f.name]
+    if text == none then
+      if f.info.kind == "bool" then
+        out[f.name] = Json.boolean(false)
+      end
+      continue
+    end
+    let kind = f.info.kind
+    if kind == "int" or kind == "float" then
+      let n = float.parse(text)
+      if text == "" and f.info.nullable then
+        out[f.name] = Json.null()
+      else
+        if n == none then
+          return Result<Json, Error>.Err(Error { message: "{f.name}: {text} is not a number" })
+        end
+        out[f.name] = Json.number(n)
+      end
+    else
+      if kind == "bool" then
+        out[f.name] = Json.boolean(text == "true" or text == "on" or text == "1" or text == "yes")
+      else
+        if text == "" and f.info.nullable then
+          out[f.name] = Json.null()
+        else
+          out[f.name] = Json.string(text)
+        end
+      end
+    end
+  end
+  Result<Json, Error>.Ok(Json.object(out))
+end
+
 fun optional(p: ParamInfo) -> bool
   p.type_name.ends_with("?")
 end
@@ -279,6 +340,7 @@ struct App
   chain: Handler?
   wiring: array<string>
   check_bodies: bool
+  guards: map<string, GuardFn>
 end
 
 impl App
@@ -288,7 +350,13 @@ impl App
     let services = providers.filter(fun(c: Callable) -> bool method_of(c) == none end)
     let c = di.Container.new(services)
     c.expects<Request>()
-    App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true }
+    App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {} }
+  end
+
+  --" Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in
+  `req.attrs`) and gives `none` to let it through or a response to stop there. --"
+  public fun guard(self, name: string, check: GuardFn)
+    self.guards[name] = check
   end
 
   --" The routes added so far, in order. --"
@@ -330,6 +398,7 @@ impl App
       run: fun(req: Request, c: di.Container) -> Response h(req) end,
       needs: [],
       source: none,
+      guards: [],
     })
   end
 
@@ -360,7 +429,7 @@ impl App
       if found == none then
         continue
       end
-      self.register(c, found.0, self.base + found.1)
+      self.register(c, found.0, self.base + found.1, [])
     end
   end
 
@@ -378,13 +447,19 @@ impl App
         prefix = given
       end
     end
+    let inherited: array<string> = []
+    for a in info.annotations do
+      if a.name == "Guard" then
+        inherited.push(a.get_string("name") ?? "")
+      end
+    end
     for c in Reflect.bound_callables<T>(instance) do
       let found = method_of(c)
       if found == none then
         continue
       end
       let tail = if found.1 == "/" and prefix != "" then "" else found.1 end
-      self.register(c, found.0, self.base + prefix + tail)
+      self.register(c, found.0, self.base + prefix + tail, inherited)
     end
   end
 
@@ -398,7 +473,17 @@ impl App
     self.controller<T>(made.unwrap())
   end
 
-  fun register(self, c: Callable, method: string, pattern: string)
+  fun register(self, c: Callable, method: string, pattern: string, inherited: array<string>)
+    let guard_names: array<string> = []
+    for g in inherited do
+      guard_names.push(g)
+    end
+    for a in c.annotations do
+      if a.name == "Guard" then
+        guard_names.push(a.get_string("name") ?? "")
+      end
+    end
+    let app = self
     let resolvers: array<Resolver> = []
     let needs: array<string> = []
     for p in c.params do
@@ -424,6 +509,17 @@ impl App
       method: method,
       pattern: pattern,
       run: fun(req: Request, parent: di.Container) -> Response
+        for g in guard_names do
+          let check = app.guards[g]
+          if check == none then
+            Log.error("{c.name}: no guard called {g}")
+            return Problem { status: 500, message: "Internal Server Error" }.to_response()
+          end
+          let stop = check(req)
+          if stop != none then
+            return stop
+          end
+        end
         let scope = parent.child()
         scope.set(req)
         let args: array<Any> = []
@@ -447,6 +543,7 @@ impl App
       end,
       needs: needs,
       source: c,
+      guards: guard_names,
     })
   end
 
@@ -529,11 +626,11 @@ impl App
           end
           return problem<Any>(400, "the request needs a body")
         end
-        let json = Json.parse(text)
-        if json.is_err() then
-          return problem<Any>(400, "the body is not valid JSON: {json.unwrap_err().message}")
+        let tree = if is_form(req) then form_json(req, p) else Json.parse(text) end
+        if tree.is_err() then
+          return problem<Any>(400, "the body is not valid: {tree.unwrap_err().message}")
         end
-        let read = p.decode(json.unwrap())
+        let read = p.decode(tree.unwrap())
         if read.is_err() then
           return problem<Any>(422, read.unwrap_err().message)
         end
@@ -572,6 +669,11 @@ impl App
     end
     let i = 0
     for route in self.routes do
+      for g in route.guards do
+        if self.guards[g] == none then
+          problems.push("{route.method} {route.pattern} has the guard {g}, which was not defined")
+        end
+      end
       for need in route.needs do
         if need != "Request" and not self.container.has_key(need) then
           problems.push("{route.method} {route.pattern} needs {need}: no provider")
@@ -639,4 +741,4 @@ impl App
 end
 
 export App, ErrorEnvelope, Problem, Handler, Middleware, RouteDef, to_response
-export Get, Post, Put, Patch, Delete, Route, Controller, Doc, Tag, Status, Path, Query, Body, Header, CookieValue
+export Get, Post, Put, Patch, Delete, Route, Controller, Guard, GuardFn, Doc, Tag, Status, Path, Query, Body, Header, CookieValue

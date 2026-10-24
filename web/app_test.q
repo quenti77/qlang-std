@@ -5,6 +5,7 @@ import "test_blog_controllers.q" as controllers
 fun build() -> web.App
   let app = web.App.new(Reflect.callables(blog))
   app.controllers(Reflect.callables(controllers))
+  with_auth(app)
   app
 end
 
@@ -176,4 +177,54 @@ fun test_a_controller_may_come_from_the_container()
   let app = web.App.new(Reflect.callables(blog))
   app.controller_from_container<controllers.Shelf>()
   assert(app.validate().len() > 0)
+end
+
+fun with_auth(app: web.App)
+  app.guard("auth", fun(req: Request) -> Response?
+    let token = req.header("authorization")
+    if token == none then
+      return web.Problem { status: 401, message: "Unauthorized" }.to_response()
+    end
+    req.attrs["who"] = Any.of("ada")
+    none
+  end)
+end
+
+fun test_a_guard_stops_a_request_or_lets_it_through()
+  let app = build()
+  with_auth(app)
+  assert_eq(app.handle(req("GET", "/secret")).status, 401)
+  let ok = app.handle(Request { method: "GET", url: "/secret", path: "/secret", headers: {"authorization": "x"} })
+  assert_eq(ok.status, 200)
+  assert_eq(ok.body, "for ada")
+  assert_eq(app.handle(req("GET", "/posts")).status, 200)
+end
+
+fun test_a_guard_on_a_controller_covers_its_routes()
+  let app = build()
+  with_auth(app)
+  app.controller(controllers.Admin { tag: "x" })
+  assert_eq(app.handle(req("GET", "/admin")).status, 401)
+  let ok = app.handle(Request { method: "GET", url: "/admin", path: "/admin", headers: {"authorization": "x"} })
+  assert_eq(ok.body, "admin x")
+end
+
+fun test_validate_finds_a_guard_nobody_defined()
+  let bare = web.App.new(Reflect.callables(blog))
+  bare.controllers(Reflect.callables(controllers))
+  let found = bare.validate()
+  assert(found.len() > 0)
+  assert(found[0].contains("guard auth"))
+end
+
+fun test_a_form_body_is_read_like_json()
+  let app = build()
+  let sent = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "title=Fourth&stars=3" }
+  let ok = app.handle(sent)
+  assert_eq(ok.status, 201)
+  assert(ok.body.contains("Fourth"))
+  let short = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "title=x" }
+  assert_eq(app.handle(short).status, 422)
+  let bad = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "title=Fourth&stars=many" }
+  assert_eq(app.handle(bad).status, 400)
 end
