@@ -1,0 +1,57 @@
+import "cache.q" as c
+
+struct Post
+  public id: int
+  public title: string
+end
+
+fun test_a_value_comes_back_until_it_expires()
+  let cache = c.Cache.memory()
+  cache.put("n", 42, 60)
+  assert_eq(cache.get<int>("n"), 42)
+  assert_eq(cache.get<int>("other"), none)
+  cache.put("short", "x", 1)
+  time.sleep(1100)
+  assert_eq(cache.get<string>("short"), none)
+end
+
+fun test_structs_go_through_json()
+  let cache = c.Cache.memory()
+  cache.put("p", Post { id: 1, title: "Hi" }, 60)
+  let back = cache.get<Post>("p")
+  assert_eq(back != none, true)
+  assert_eq(cache.get<int>("p"), none)
+end
+
+fun test_remember_produces_once()
+  let cache = c.Cache.memory()
+  let calls = [0]
+  let make = fun() -> int
+    calls[0] += 1
+    calls[0] * 10
+  end
+  assert_eq(cache.remember<int>("k", 60, make), 10)
+  assert_eq(cache.remember<int>("k", 60, make), 10)
+  assert_eq(calls[0], 1)
+  cache.forget("k")
+  assert_eq(cache.remember<int>("k", 60, make), 20)
+end
+
+fun test_scopes_keep_keys_apart()
+  let cache = c.Cache.memory()
+  let a = cache.scoped("a")
+  let b = cache.scoped("b")
+  a.put("k", 1, 60)
+  assert_eq(b.get<int>("k"), none)
+  assert_eq(a.get<int>("k"), 1)
+  assert_eq(cache.get<int>("a:k"), 1)
+end
+
+fun test_files_keep_values_between_caches()
+  let one = c.Cache.files(env.get("TMPDIR") ?? "/tmp")
+  one.put("qlang-std-cache-test", "hello", 60)
+  let two = c.Cache.files(env.get("TMPDIR") ?? "/tmp")
+  assert_eq(two.get<string>("qlang-std-cache-test"), "hello")
+  two.forget("qlang-std-cache-test")
+  assert_eq(one.get<string>("qlang-std-cache-test"), none)
+end

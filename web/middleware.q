@@ -50,32 +50,65 @@ fun security_headers() -> web.Middleware
   end
 end
 
+--" What `cors_with` allows. --"
+struct CorsOptions
+  --" The origins that may call (`"https://app.example"`), or `"*"` for any. --"
+  public origins: array<string>
+  public methods: array<string> = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  --" The request headers allowed; empty means the ones the browser asks for. --"
+  public headers: array<string> = []
+  --" Response headers the page may read (`X-Request-Id`...). --"
+  public expose: array<string> = []
+  --" Lets the page send cookies and credentials; then the origin is repeated, never `*`. --"
+  public credentials: bool = false
+  --" Seconds a browser may keep the answer to a preflight request. --"
+  public max_age: int = 600
+end
+
 --" Lets browsers of these origins (`["https://app.example"]`, or `["*"]`) call the API from a
 page: answers the preflight `OPTIONS` request itself and adds `Access-Control-Allow-Origin` to
 the other answers. --"
 fun cors(origins: array<string>) -> web.Middleware
+  cors_with(CorsOptions { origins: origins })
+end
+
+--" `cors` with every option: methods, headers, exposed headers, credentials, preflight cache. --"
+fun cors_with(o: CorsOptions) -> web.Middleware
   fun(req: Request, next: web.Handler) -> Response
     let origin = req.header("origin")
     if origin == none then
       return next(req)
     end
-    let allowed = origins.contains("*") or origins.contains(origin)
-    if not allowed then
+    let any = o.origins.contains("*")
+    if not any and not o.origins.contains(origin) then
       return next(req)
     end
-    let shown = if origins.contains("*") then "*" else origin end
+    let shown = if any and not o.credentials then "*" else origin end
     if req.method == "OPTIONS" and req.header("access-control-request-method") != none then
       let wanted = req.header("access-control-request-headers")
       let res = Response { status: 204, body: "" }
       res.headers["Access-Control-Allow-Origin"] = shown
-      res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-      res.headers["Access-Control-Allow-Headers"] = if wanted == none then "Content-Type, Authorization" else wanted end
-      res.headers["Access-Control-Max-Age"] = "600"
+      res.headers["Access-Control-Allow-Methods"] = o.methods.join(", ")
+      if o.headers.len() > 0 then
+        res.headers["Access-Control-Allow-Headers"] = o.headers.join(", ")
+      else
+        res.headers["Access-Control-Allow-Headers"] = if wanted == none then "Content-Type, Authorization" else wanted end
+      end
+      if o.credentials then
+        res.headers["Access-Control-Allow-Credentials"] = "true"
+      end
+      res.headers["Access-Control-Max-Age"] = "{o.max_age}"
       res.headers["Vary"] = "Origin"
       return res
     end
     let res = next(req)
     res.headers["Access-Control-Allow-Origin"] = shown
+    if o.credentials then
+      res.headers["Access-Control-Allow-Credentials"] = "true"
+    end
+    if o.expose.len() > 0 then
+      res.headers["Access-Control-Expose-Headers"] = o.expose.join(", ")
+    end
     res.headers["Vary"] = "Origin"
     res
   end
@@ -124,4 +157,4 @@ fun request_id() -> web.Middleware
   end
 end
 
-export logging, security_headers, cors, bearer_token, request_id
+export logging, security_headers, cors, cors_with, CorsOptions, bearer_token, request_id
