@@ -2,6 +2,8 @@
 import "../../web/app.q" as web
 import "../../web/middleware.q" as mw
 import "../../web/session.q" as session
+import "../../web/auth.q" as auth
+import "../../jwt.q" as jwt
 import "providers.q" as providers
 import "controllers.q" as controllers
 import Config, Me, Users from "providers.q"
@@ -29,6 +31,9 @@ fun build() -> web.App
     req.attrs["me"] = Any.of(Me { id: row.id, email: row.email })
     none
   end)
+
+  -- bearer tokens, for clients that are not browsers
+  app.guard("jwt", auth.jwt_guard([jwt.Key.hs256(config.secret)], jwt.Options {}))
 
   app.controllers(Reflect.callables(controllers))
   app.controller(controllers.TaskController {})

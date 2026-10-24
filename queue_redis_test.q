@@ -132,3 +132,73 @@ fun test_a_job_without_a_handler_goes_to_the_failed_list()
   assert_eq(queue.work_one().unwrap(), true)
   assert(queue.failed().unwrap()[0].error.contains("no handler"))
 end
+
+#[qq.Retry(tries: 4, backoff: [5])]
+struct Patient
+  public n: int
+end
+
+#[qq.Unique(seconds: 600)]
+struct Once
+  public key: string
+end
+
+fun test_a_job_asks_for_its_own_tries_and_backoff()
+  let clock = [1000000]
+  let queue = fresh(clock, "t7")
+  if queue == none then
+    return
+  end
+  let runs = [0]
+  queue.handle<Patient>(fun(p: Patient) -> string?
+    runs[0] += 1
+    "no"
+  end)
+  queue.push(Patient { n: 1 }).unwrap()
+  for i in 0..4 do
+    assert_eq(queue.work_one().unwrap(), true)
+    clock[0] += 5500
+  end
+  assert_eq(runs[0], 4)
+  assert_eq(queue.failed().unwrap()[0].attempts, 4)
+end
+
+fun test_a_unique_job_is_pushed_once_until_it_is_done()
+  let clock = [1000000]
+  let queue = fresh(clock, "t8")
+  if queue == none then
+    return
+  end
+  queue.handle<Once>(fun(o: Once) -> string? none end)
+  assert_eq(queue.push(Once { key: "a" }).unwrap(), true)
+  assert_eq(queue.push(Once { key: "a" }).unwrap(), false)
+  queue.work(true).unwrap()
+  assert_eq(queue.push(Once { key: "a" }).unwrap(), true)
+end
+
+fun test_a_released_job_keeps_its_attempts()
+  let clock = [1000000]
+  let queue = fresh(clock, "t9")
+  if queue == none then
+    return
+  end
+  queue.max_attempts = 1
+  let busy = [true]
+  let ran = [0]
+  queue.use(fun(job: qq.Job, next: qq.JobNext) -> qq.Outcome
+    if busy[0] then qq.Outcome.release(30) else next() end
+  end)
+  queue.handle<Mail>(fun(m: Mail) -> string?
+    ran[0] += 1
+    none
+  end)
+  queue.push(Mail { to: "x" }).unwrap()
+  assert_eq(queue.work_one().unwrap(), true)
+  clock[0] += 31000
+  assert_eq(queue.work_one().unwrap(), true)
+  clock[0] += 31000
+  busy[0] = false
+  assert_eq(queue.work_one().unwrap(), true)
+  assert_eq(ran[0], 1)
+  assert_eq(queue.failed().unwrap().len(), 0)
+end

@@ -111,7 +111,7 @@ impl Tasks
 end
 
 fun make_config() -> Config
-  Config { database: env.get("TASKS_DB") ?? "sqlite://:memory:", secret: env.get("TASKS_SECRET") ?? "dev-only-secret" }
+  Config { database: env.get("TASKS_DB") ?? "sqlite://:memory:", secret: env.get("TASKS_SECRET") ?? "dev-only-secret-dev-only-secret-0123456789" }
 end
 
 fun make_db(config: Config) -> Db
