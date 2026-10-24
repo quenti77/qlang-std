@@ -52,3 +52,32 @@ end
 fun options() -> string
   "options"
 end
+
+--" A controller written as a struct. --"
+#[web.Controller("/shelf")]
+struct Shelf
+  public label: string
+end
+
+impl Shelf
+  #[web.Get("/")]
+  public fun all(self, posts: Posts) -> string
+    "{self.label}: {posts.all().len()}"
+  end
+
+  #[web.Get("/:id")]
+  public fun one(self, #[web.Path] id: int, posts: Posts) -> Post?
+    posts.find(id)
+  end
+
+  #[web.Post("/")]
+  #[web.Status(201)]
+  public fun add(self, #[web.Body] input: NewPost, posts: Posts) -> Post
+    posts.add(input.title)
+  end
+
+  fun not_a_route(self) -> int
+    1
+  end
+end
+export Shelf

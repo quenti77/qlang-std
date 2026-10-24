@@ -157,3 +157,23 @@ fun test_validate_finds_a_route_hidden_by_an_earlier_one()
   assert(problems.contains("GET /posts/:id is hidden by /posts/:id"))
   assert(problems.contains("GET /posts/new is hidden by /posts/:id"))
 end
+
+fun test_a_struct_with_annotated_methods_is_a_controller_under_its_prefix()
+  let app = web.App.new(Reflect.callables(blog))
+  app.controller(controllers.Shelf { label: "books" })
+  assert_eq(app.validate(), [])
+  let all = app.handle(req("GET", "/shelf"))
+  assert_eq(all.status, 200)
+  assert(all.body.starts_with("books: "))
+  assert_eq(app.handle(req("GET", "/shelf/2")).status, 200)
+  assert_eq(app.handle(req("GET", "/shelf/99")).status, 404)
+  let made = app.handle(with_body(req("POST", "/shelf"), "\{\"title\": \"Fourth\"\}"))
+  assert_eq(made.status, 201)
+  assert_eq(app.handle(req("GET", "/not_a_route")).status, 404)
+end
+
+fun test_a_controller_may_come_from_the_container()
+  let app = web.App.new(Reflect.callables(blog))
+  app.controller_from_container<controllers.Shelf>()
+  assert(app.validate().len() > 0)
+end

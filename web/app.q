@@ -56,6 +56,13 @@ struct Get
   path: string
 end
 
+--" `#[Controller("/posts")]` on a struct: its methods that carry a route annotation are routes,
+all under this prefix. See `App.controller`. --"
+#[annotation]
+struct Controller
+  prefix: string = ""
+end
+
 --" `#[Post("/path")]` --"
 #[annotation]
 struct Post
@@ -336,6 +343,40 @@ impl App
     end
   end
 
+  --" Adds the public methods of `instance` that carry a route annotation as routes. The struct may
+  carry `#[Controller("/prefix")]`. The instance lives as long as the application: what changes
+  with each request (the user, a connection) comes in as a parameter of the method, like for a
+  function. --"
+  public fun controller<T>(self, instance: T)
+    let prefix = ""
+    let info = Reflect.struct_info<T>()
+    let tag = info.annotation("Controller")
+    if tag != none then
+      let given = tag.get_string("prefix")
+      if given != none then
+        prefix = given
+      end
+    end
+    for c in Reflect.bound_callables<T>(instance) do
+      let found = method_of(c)
+      if found == none then
+        continue
+      end
+      let tail = if found.1 == "/" and prefix != "" then "" else found.1 end
+      self.register(c, found.0, self.base + prefix + tail)
+    end
+  end
+
+  --" Like `controller`, with the instance taken from the container (a provider returns `T`). --"
+  public fun controller_from_container<T>(self)
+    let made = self.container.get<T>()
+    if made.is_err() then
+      self.wiring.push("controller {Reflect.type_name<T>()}: {made.unwrap_err().message}")
+      return
+    end
+    self.controller<T>(made.unwrap())
+  end
+
   fun register(self, c: Callable, method: string, pattern: string)
     let resolvers: array<Resolver> = []
     let needs: array<string> = []
@@ -576,4 +617,4 @@ impl App
 end
 
 export App, Problem, Handler, Middleware, RouteDef, to_response
-export Get, Post, Put, Patch, Delete, Route, Status, Path, Query, Body, Header, CookieValue
+export Get, Post, Put, Patch, Delete, Route, Controller, Status, Path, Query, Body, Header, CookieValue
