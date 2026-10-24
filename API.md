@@ -170,16 +170,21 @@ A key, for signing or for checking.
 
 **Fields**
 
-- `alg: string` — `HS256`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384` or `EdDSA`.
+- `alg: string` — `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `PS256`, `PS384`, `PS512`, `ES256`, `ES384` or `EdDSA` (the HS384, HS512 and PS ones need `qlang` 0.55 or later).
 - `key: string` — The secret, or a PEM, or a JWK (JSON text).
 - `kid: string?` — The name that the token header carries, to tell the keys of a set apart.
 
 **Methods**
 
 - `fun hs256(secret: string) -> Key`
+- `fun hs384(secret: string) -> Key` — HMAC with SHA-384: a secret of at least 48 characters.
+- `fun hs512(secret: string) -> Key` — HMAC with SHA-512: a secret of at least 64 characters.
 - `fun rs256(pem: string) -> Key`
 - `fun rs384(pem: string) -> Key`
 - `fun rs512(pem: string) -> Key`
+- `fun ps256(pem: string) -> Key` — RSA-PSS with SHA-256 (the padding that is recommended over RS256).
+- `fun ps384(pem: string) -> Key`
+- `fun ps512(pem: string) -> Key`
 - `fun es256(pem: string) -> Key`
 - `fun es384(pem: string) -> Key`
 - `fun eddsa(pem: string) -> Key`
@@ -265,6 +270,7 @@ A job that gave up.
 - `payload: string`
 - `attempts: int`
 - `error: string`
+- `queue: string` — The queue it came from (`"default"` unless you added others with `Queue.lane`).
 
 ## `trait QueueDriver`
 
@@ -297,6 +303,8 @@ The jobs in a SQL database.
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>`
+- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>`
+- `fun countdown(key: string) -> Result<bool, Error>`
 
 ## `struct RedisDriver`
 
@@ -325,6 +333,8 @@ with nothing to do waits on a list that every push writes to, so a new job is pi
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>`
+- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>`
+- `fun countdown(key: string) -> Result<bool, Error>`
 
 ## `struct Outcome`
 
@@ -369,6 +379,10 @@ most `seconds`), pushing it again does nothing (`push` gives `false`).
 `#[Delay(seconds: 30)]` on a job structure: it starts that long after it is pushed, unless `push_in`
 says otherwise.
 
+## `struct OnQueue`
+
+`#[OnQueue(name: high)]` on a job structure: the queue it goes to when `push` is used (see `Queue.lane`).
+
 ## `struct Settings`
 
 What the annotations of a job structure say.
@@ -379,6 +393,7 @@ What the annotations of a job structure say.
 - `backoff: array<int>`
 - `unique: int`
 - `delay: int`
+- `lane: string`
 
 ## `struct WorkOptions`
 
@@ -390,6 +405,19 @@ What `work_with` does.
 - `max_jobs: int` — Stop after this many jobs (0: no limit): a worker that restarts often keeps its memory small.
 - `max_seconds: int` — Stop after this many seconds (0: no limit), at the end of the job that is running.
 - `sleep_ms: int` — With a database: how long to wait between two looks when nothing is due.
+- `queues: array<string>` — The queues to serve, the most important first (`["high", "default"]`); none: all of them, in the order they were added.
+
+## `struct Step`
+
+A job written down for later: where it goes, its type and its fields (as text).
+
+**Fields**
+
+- `queue: string`
+- `kind: string`
+- `payload: string`
+- `unique: int`
+- `delay: int`
 
 ## `struct Queue`
 
@@ -412,15 +440,56 @@ The queue and its handlers.
 - `fun use(m: fun(Job, fun() -> Outcome) -> Outcome)` — Code around **every** job (see `JobMiddleware`); the first added is the outermost.
 - `fun handle(handler: fun(T) -> string?)` — Says what to do with the jobs of type `T`: `none` when it is done, otherwise why it failed. The annotations of `T` (`#[Retry]`, `#[Unique]`, `#[Delay]`) say how it is tried.
 - `fun handle_with(handler: fun(T) -> string?, around: array<fun(Job, fun() -> Outcome) -> Outcome>)` — Like `handle`, with middleware for this type of job only (inside the global ones).
-- `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free (or after its `#[Delay]`). Gives `false` when a `#[Unique]` job like it is already there.
+- `fun lane(name: string, driver: QueueDriver)` — Adds a queue next to `"default"`: `queue.lane("high", DbDriver { db: db, dialect: "sqlite", table: "jobs_high" })` or `queue.lane("high", RedisDriver { redis: redis, name: "high" })`. A worker serves the queues in the order of `WorkOptions.queues`, so the jobs of an earlier one always go first.
+- `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free (or after its `#[Delay]`), in the queue its `#[OnQueue]` names (`"default"`). Gives `false` when a `#[Unique]` job like it is already there.
 - `fun push_in(job: T, seconds: int) -> Result<bool, Error>` — Writes a job down, to be done after `seconds`.
-- `fun pending() -> Result<int, Error>` — How many jobs wait (or run).
+- `fun push_on(lane: string, job: T) -> Result<bool, Error>` — Writes a job down in the queue `lane`, whatever its `#[OnQueue]` says.
+- `fun send(item: Step, meta: Meta?, seconds: int) -> Result<bool, Error>` — Writes a item down; `seconds` below zero: the delay of the item.
+- `fun chain() -> Chain` — A chain of jobs: each starts when the one before it is done, and none starts if one gives up.
+- `fun batch() -> Batch` — A batch of jobs, done in parallel; one more job can follow when all are done, one when a job gives up.
+- `fun pending() -> Result<int, Error>` — How many jobs wait (or run), in every queue.
 - `fun work_one() -> Result<bool, Error>` — Does the next due job. Gives `true` when there was one (done or failed), `false` when none was due.
 - `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones. It also ends, at the end of the job that is running, when the process was told to stop (`Process.stopping()`).
-- `fun work_with(o: WorkOptions) -> Result<int, Error>` — `work` with its limits: see `WorkOptions`. Gives how many jobs were done. With Redis the wait is on the queue itself, so a new job starts at once; with a database the worker looks again after `sleep_ms`. A database error ends it with that error.
-- `fun failed() -> Result<array<FailedJob>, Error>` — The jobs that gave up, oldest first.
-- `fun retry_failed(id: string) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id.
+- `fun work_with(o: WorkOptions) -> Result<int, Error>` — `work` with its limits: see `WorkOptions`. Gives how many jobs were done. With Redis the wait is on the queue itself, so a new job starts at once; with a database the worker looks again after `sleep_ms`. A worker that serves several queues looks at them in turn (at least every 250 ms with Redis). A database error ends it with that error.
+- `fun failed() -> Result<array<FailedJob>, Error>` — The jobs that gave up, oldest first, in every queue (`queue` says which).
+- `fun retry_failed(id: string) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id (the queues are searched in order; `retry_failed_on` names one).
+- `fun retry_failed_on(lane: string, id: string) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>` — Deletes a failed job. `false` if there is none with this id.
+
+## `struct Chain`
+
+Jobs that follow each other (`queue.chain()`).
+
+**Fields**
+
+- `queue: Queue`
+- `steps: array<Step>`
+- `fails: array<Step>`
+
+**Methods**
+
+- `fun add(job: T) -> Chain` — The next job of the chain.
+- `fun on_failure(job: T) -> Chain` — A job to push if one of the chain gives up.
+- `fun dispatch() -> Result<bool, Error>` — Pushes the first job. `false` when the chain is empty or the first job is a `#[Unique]` one already there.
+
+## `struct Batch`
+
+Jobs done in parallel (`queue.batch()`): `when_done` pushes a job when all are done, `when_failed` when one gives up
+(once). The count is kept by the driver of the default queue, so any number of workers can finish them.
+
+**Fields**
+
+- `queue: Queue`
+- `steps: array<Step>`
+- `after: array<Step>`
+- `fails: array<Step>`
+
+**Methods**
+
+- `fun add(job: T) -> Batch`
+- `fun when_done(job: T) -> Batch` — The job to push when every job of the batch is done.
+- `fun when_failed(job: T) -> Batch` — The job to push, once, if a job of the batch gives up.
+- `fun dispatch() -> Result<string, Error>` — Pushes the jobs and gives the id of the batch.
 
 ## `fun rate_limited(cache: Cache, key: fun(Job) -> string, limit: int, seconds: int) -> fun(Job, fun() -> Outcome) -> Outcome`
 
@@ -914,6 +983,76 @@ A SELECT, INSERT, UPDATE or DELETE under construction.
 - `fun update(db: Db, changes: map<string, Json>) -> Result<int, Error>` — Changes the columns of the rows that match. Gives the number of rows changed.
 - `fun delete(db: Db) -> Result<int, Error>` — Deletes the rows that match. Gives the number of rows deleted.
 
+# web/queue_admin.q
+
+## `fun mount(app: App, queue: Queue, path: string, guard: fun(Request) -> Response?)`
+
+Adds the dashboard routes under `path`; `guard` runs first on each of them (`none`: let through).
+
+# web/refresh.q
+
+## `struct Refresh`
+
+A refresh token store in a SQL database.
+
+**Fields**
+
+- `db: Db`
+- `ttl: int` — Seconds a token lives (30 days by default).
+- `table: string` — The table.
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(db: Db) -> Refresh`
+- `fun install() -> Result<bool, Error>` — Makes the table if it does not exist.
+- `fun issue(user: string) -> Result<string, Error>` — A new token for `user`, starting a new family (one login).
+- `fun rotate(token: string) -> Result<Rotated, Error>` — Burns `token` and gives its successor. If `token` was already used, every token of its family is revoked and the error starts with `reused`.
+- `fun revoke(token: string) -> Result<bool, Error>` — Revokes this token's whole session (a "sign out"). `false` if the token is unknown.
+- `fun revoke_user(user: string) -> Result<int, Error>` — Revokes every session of `user`. Gives how many tokens were deleted.
+- `fun purge() -> Result<int, Error>` — Deletes the tokens that have expired (run it now and then).
+
+## `struct Rotated`
+
+The token to send, and the user it belongs to.
+
+**Fields**
+
+- `user: string`
+- `token: string`
+
+# web/relations.q
+
+## `struct With`
+
+A row and what relates to it.
+
+**Fields**
+
+- `item: P`
+- `related: R`
+
+## `fun has_many(db: Db, parents: array<P>, key: string, table: string, foreign_key: string) -> Result<array<With<P, array<C>>>, Error>`
+
+The `C` rows whose `foreign_key` is the `key` of each parent.
+
+## `fun has_many_where(db: Db, parents: array<P>, key: string, table: string, foreign_key: string, constrain: fun(Query) -> Query) -> Result<array<With<P, array<C>>>, Error>`
+
+`has_many` with a function that adds conditions or an order to the query of the children.
+
+## `fun has_one(db: Db, parents: array<P>, key: string, table: string, foreign_key: string) -> Result<array<With<P, C?>>, Error>`
+
+The first `C` row whose `foreign_key` is the `key` of each parent.
+
+## `fun belongs_to(db: Db, children: array<C>, foreign_key: string, table: string, key: string) -> Result<array<With<C, O?>>, Error>`
+
+The `O` row each child points to: the one whose `key` is the child's `foreign_key`.
+
+## `fun belongs_to_many(db: Db, parents: array<P>, key: string, pivot: string, parent_key: string, related_key: string, table: string, id: string) -> Result<array<With<P, array<R>>>, Error>`
+
+Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of the parent) and a
+`related_key` column (the `id` of the related row in `table`).
+
 # web/session.q
 
 ## `struct Session`
@@ -1115,6 +1254,7 @@ Messages shared by every worker through a table.
 - `table: string`
 - `dialect: string`
 - `clock: fun() -> int` — The time in milliseconds; tests give their own.
+- `numbered: bool` — Send each message as `{"room": ..., "id": 12, "text": ...}` so a client can say where it stopped (see `replay`). Off by default: the message is sent as it was published.
 
 **Methods**
 
@@ -1123,6 +1263,8 @@ Messages shared by every worker through a table.
 - `fun publish(room: string, text: string) -> Result<bool, Error>` — Writes a message for the room.
 - `fun last(room: string) -> int` — The number of the last message of the room (0 if none): where a new connection starts, so that it only hears what comes after.
 - `fun since(room: string, after: int) -> array<(int, string)>` — The messages of the room after number `after`, oldest first, as (number, text).
+- `fun frame(room: string, id: int, text: string) -> string` — What is sent for message number `id`: the text itself, or with `numbered` its number too.
+- `fun replay(conn: WebSocket, room: string, after: int) -> int` — For a client that reconnects: sends the messages published in the room after number `after` (the last one it saw; the client keeps it, so use `numbered`), oldest first, and makes `deliver` go on from there. Gives how many were sent. Messages that were pruned are gone: `replay` is for short gaps, and a client that was away for long should reload its page of history. A message may come twice when `Relay` and `replay` meet: the client ignores a number it already has.
 - `fun deliver(conn: WebSocket, room: string)` — Sends to the connection what was published in the room since the last time it was asked (`conn.data["cursor:room"]` remembers where it stopped). Call it from `on_tick`.
 - `fun prune(seconds: int) -> Result<int, Error>` — Deletes the messages older than `seconds`. Run it from time to time.
 

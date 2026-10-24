@@ -33,6 +33,12 @@ nothing). Two tools cover that:
   - `RedisBus` + `RedisFeed` go through **Redis** publish/subscribe: each worker subscribes once per
     room and Redis pushes the messages, so nothing is read while nobody speaks, and the interval can be
     50 ms. This is what a real deployment (Laravel Reverb, Socket.IO adapters...) does.
+
+A client that loses its connection should not lose messages. With `bus.numbered = true` every message is
+sent as `{"room", "id", "text"}`; the client keeps the last `id`, and when it reconnects (`/chat?after=41`)
+the route calls `bus.replay(conn, "lobby", after)` in `on_open`: the missed messages come first, and
+`deliver` goes on from there. A client ignores an `id` it already has. (Only the database bus keeps
+messages; with Redis publish/subscribe a message that nobody listened to is gone.)
 --"
 import "app.q" as web
 
@@ -96,12 +102,15 @@ struct Bus
   public dialect: string
   --" The time in milliseconds; tests give their own. --"
   public clock: fun() -> int
+  --" Send each message as `{"room": ..., "id": 12, "text": ...}` so a client can say where it stopped
+  (see `replay`). Off by default: the message is sent as it was published. --"
+  public numbered: bool = false
 end
 
 impl Bus
   --" A bus on `db`; `dialect` is `"sqlite"`, `"postgres"` or `"mysql"`. --"
   public fun new(db: Db, dialect: string) -> Bus
-    Bus { db: db, table: "ws_messages", dialect: dialect, clock: fun() -> int time.now() end }
+    Bus { db: db, table: "ws_messages", dialect: dialect, clock: fun() -> int time.now() end, numbered: false }
   end
 
   --" Makes the table if it does not exist. --"
@@ -148,6 +157,37 @@ impl Bus
     out
   end
 
+  --" What is sent for message number `id`: the text itself, or with `numbered` its number too. --"
+  public fun frame(self, room: string, id: int, text: string) -> string
+    if not self.numbered then
+      return text
+    end
+    Json.object({"room": Json.string(room), "id": Json.number(id as float), "text": Json.string(text)}).to_text()
+  end
+
+  --" For a client that reconnects: sends the messages published in the room after number `after` (the
+  last one it saw; the client keeps it, so use `numbered`), oldest first, and makes `deliver` go on
+  from there. Gives how many were sent. Messages that were pruned are gone: `replay` is for short gaps,
+  and a client that was away for long should reload its page of history. A message may come twice when
+  `Relay` and `replay` meet: the client ignores a number it already has. --"
+  public fun replay(self, conn: WebSocket, room: string, after: int) -> int
+    let sent = 0
+    let cursor = after
+    while true do
+      let news = self.since(room, cursor)
+      for m in news do
+        conn.send(self.frame(room, m.0, m.1))
+        cursor = m.0
+        sent += 1
+      end
+      if news.len() < 200 then
+        break
+      end
+    end
+    conn.data["cursor:{room}"] = Any.of(cursor)
+    sent
+  end
+
   --" Sends to the connection what was published in the room since the last time it was asked
   (`conn.data["cursor:room"]` remembers where it stopped). Call it from `on_tick`. --"
   public fun deliver(self, conn: WebSocket, room: string)
@@ -160,7 +200,7 @@ impl Bus
     end
     let news = self.since(room, after)
     for m in news do
-      conn.send(m.1)
+      conn.send(self.frame(room, m.0, m.1))
       conn.data[key] = Any.of(m.0)
     end
   end
@@ -208,7 +248,7 @@ impl Feed for DbFeed
         continue
       end
       for m in self.bus.since(room, self.cursors[room] ?? 0) do
-        out.push((room, m.1))
+        out.push((room, self.bus.frame(room, m.0, m.1)))
         self.cursors[room] = m.0
       end
     end
