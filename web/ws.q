@@ -24,9 +24,11 @@ nothing). Two tools cover that:
 
 - `Hub` keeps the connections of **one worker** in rooms: `join`, `leave`, `broadcast`. Use it with
   `--workers 1`, or for what only concerns the connection itself.
-- `Bus` goes through the **database**: `publish(room, text)` writes a message, and each connection polls
-  for the new ones in its `on_tick`. Every worker sees them. A tick of a second or less feels instant
-  enough for chat or notifications; for thousands of connections, use a message broker.
+- `Bus` goes through the **database**: `publish(room, text)` writes a message and every worker sees it.
+  Give each worker a `Relay` (a `Hub` plus the bus): it reads the bus **once per interval and room**,
+  whatever the number of connections, and fans the messages out in memory. (`Bus.deliver` reads once per
+  *connection*: fine for a few dozen, no more.) A relay interval of a few hundred milliseconds feels
+  instant for a chat; for more than a few thousand connections, use a message broker.
 --"
 import "app.q" as web
 
@@ -165,6 +167,71 @@ impl Bus
   end
 end
 
+--" Brings what the bus holds to the connections of **this worker**, with one read per room and
+interval whatever the number of connections: the read is shared, the fan-out is in memory (through
+a `Hub`). Make one per worker, next to the hub.
+
+```
+let hub = ws.Hub.new()
+let relay = ws.Relay.new(bus, hub, 250)
+-- in the handler:
+on_open: fun(c: WebSocket)
+  hub.join("lobby", c)
+  relay.watch("lobby")
+end,
+on_message: fun(c: WebSocket, m: WsMessage) bus.publish("lobby", m.text ?? "").unwrap() end,
+on_tick: fun(c: WebSocket) relay.pump() end,
+```
+
+Every connection may call `pump` from its tick: the call returns at once unless the interval has
+passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls
+and one query per room each `interval`, instead of one query per connection. --"
+struct Relay
+  public bus: Bus
+  public hub: Hub
+  public interval: int
+  cursors: map<string, int>
+  last: int
+end
+
+impl Relay
+  --" `interval` is the number of milliseconds between two reads of the bus. --"
+  public fun new(bus: Bus, hub: Hub, interval: int) -> Relay
+    Relay { bus: bus, hub: hub, interval: interval, cursors: {}, last: 0 }
+  end
+
+  --" Starts listening to a room: only what is published from now on is delivered. --"
+  public fun watch(self, room: string)
+    if self.cursors[room] == none then
+      self.cursors[room] = self.bus.last(room)
+    end
+  end
+
+  --" Reads the new messages of the watched rooms (if the interval passed) and sends them to the
+  members of the hub. Gives how many messages were read. --"
+  public fun pump(self) -> int
+    let now = self.bus.clock()
+    if now - self.last < self.interval then
+      return 0
+    end
+    self.last = now
+    let read = 0
+    for room in self.cursors.keys() do
+      if self.hub.count(room) == 0 then
+        -- nobody here listens: skip the read, and start again from the end when someone joins
+        self.cursors[room] = self.bus.last(room)
+        continue
+      end
+      for m in self.bus.since(room, self.cursors[room] ?? 0) do
+        self.hub.broadcast(room, m.1, none)
+        self.cursors[room] = m.0
+        read += 1
+      end
+    end
+    read
+  end
+end
+
 --" A guard that only lets through the requests whose `Origin` is one of these (or that have none,
 which is the case of programs that are not browsers). Register it with `app.guard("origin", ...)`
 and put `#[web.Guard("origin")]` on the WebSocket route. --"
@@ -178,4 +245,4 @@ fun origin_guard(allowed: array<string>) -> web.GuardFn
   end
 end
 
-export Hub, Bus, origin_guard
+export Hub, Bus, Relay, origin_guard
