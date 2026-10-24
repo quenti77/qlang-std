@@ -196,6 +196,11 @@ all the fine points of the format).
 `#[Controller("/posts")]` on a struct: its methods that carry a route annotation are routes,
 all under this prefix. See `App.controller`.
 
+## `struct Guard`
+
+`#[Guard("auth")]` on a route or on a controller: the guard of that name (`App.guard`) runs
+before the handler, and may answer instead (`401`, a redirect...). Several can be stacked.
+
 ## `struct Doc`
 
 `#[Doc("Lists the posts")]`: what a route does, for the generated documentation (`openapi`).
@@ -280,6 +285,7 @@ A route: a method, a pattern and what answers.
 - `run: fun(Request, Container) -> Response`
 - `needs: array<string>`
 - `source: Callable?` — The function or method that answers, for routes made from one.
+- `guards: array<string>` — The names of the guards that run before it.
 
 ## `fun to_response(a: Any) -> Response`
 
@@ -296,6 +302,7 @@ The application.
 **Methods**
 
 - `fun new(providers: array<Callable>) -> App` — An application whose services come from these provider functions. Functions that carry a route annotation are handlers, not providers, and are left out.
+- `fun guard(name: string, check: fun(Request) -> Response?)` — Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in `req.attrs`) and gives `none` to let it through or a response to stop there.
 - `fun route_list() -> array<RouteDef>` — The routes added so far, in order.
 - `fun use(m: fun(Request, fun(Request) -> Response) -> Response)` — Registers a middleware. The first one added is the outermost.
 - `fun prefix(path: string)` — The routes added from now on start with this path (`"/api"`).
@@ -662,6 +669,7 @@ Sends requests to an application.
 - `fun post(path: string, body: string) -> Reply`
 - `fun put(path: string, body: string) -> Reply`
 - `fun patch(path: string, body: string) -> Reply`
+- `fun post_form(path: string, fields: map<string, string>) -> Reply` — `POST` of an HTML form: the fields as `application/x-www-form-urlencoded`.
 - `fun post_json(path: string, value: T) -> Reply` — `POST` with `value` as a JSON body.
 - `fun put_json(path: string, value: T) -> Reply`
 - `fun send_json(method: string, path: string, value: T) -> Reply`
