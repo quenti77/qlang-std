@@ -31,6 +31,23 @@ import "@std/toml.q" as toml
 | [`template.q`](template.q) | gabarits de texte : `{{ valeur }}`, filtres, `{% if %}`, `{% for %}`, échappement HTML |
 | [`toml.q`](toml.q) | lire du TOML dans un `Json` : tables, tableaux de tables, tableaux, tables en ligne, chaînes multilignes |
 
+## Commandes et traductions
+
+| Module | Rôle |
+| --- | --- |
+| [`cli.q`](cli.q) | commandes en ligne de commande : une fonction `#[cli.Command("db:migrate", "…")]` dont les paramètres sont `#[cli.Arg]` (positionnels, `array<T>` pour le reste), `#[cli.Opt(short: "n")]` (options ; `bool` = drapeau), une `Console` (`line`, `error`, `table`, `ask`, `confirm`) ou un service du conteneur ; code de sortie, aide générée (`help`, `commande --help`), suggestion en cas de faute de frappe, `Cli.run(args, console)` testable |
+| [`i18n.q`](i18n.q) | traductions : fichiers JSON par langue, `{nom}` à remplir, formes du pluriel selon la langue (`tn`), repli `fr-CA` → `fr` → langue par défaut → la clé, choix de la langue d'après `Accept-Language`, nombres écrits à la manière de la langue, `missing` liste ce qui reste à traduire |
+
+```
+#[cli.Command("greet", "Says hello")]
+fun greet(#[cli.Arg] name: string, #[cli.Opt(short: "l")] loud: bool, console: cli.Console) -> int
+  console.line(if loud then "HELLO {name}" else "Hello {name}" end)
+  0
+end
+```
+
+`examples/blog/console.q` met ces commandes à côté de l'API : `qlang run examples/blog/console.q -- help`.
+
 ## Le paquet `web`
 
 ```
@@ -51,6 +68,8 @@ import "@std/web/middleware.q" as mw
 | [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
 | [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`) sur un `Store` : mémoire du worker ou fichiers partagés |
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` |
+| [`web/locale.q`](web/locale.q) | la langue de la requête (`?lang=`, cookie, `Accept-Language`) et un service `Lang` pour les gestionnaires : `use_locale(app, traducteur, ["en", "fr"])` |
+| [`web/commands.q`](web/commands.q) | commandes prêtes à l'emploi : `routes:list`, `db:migrate`, `db:rollback`, `db:status`, `locale:missing` |
 | [`web/openapi.q`](web/openapi.q) | `openapi(app, titre, version)` : le document OpenAPI 3.1 d'après les routes, `openapi_route(app, "/openapi.json", ...)` |
 
 Un exemple complet (une API JSON avec SQLite) est dans [`examples/blog`](examples/blog) :
@@ -79,8 +98,7 @@ modèles trop courants pour les prendre.
 
 ### Ce que le paquet ne fait pas (encore)
 
-Traductions, commandes en ligne de commande, files de tâches, WebSocket, ORM à relations,
-authentification toute faite (guards, JWT). Le
+Files de tâches, WebSocket, ORM à relations, authentification toute faite (guards, JWT). Le
 serveur lui-même (`qlang serve`) reste derrière un proxy inverse pour TLS.
 
 La documentation de chaque fonction est dans [API.md](API.md) (générée par `qlang doc`).
