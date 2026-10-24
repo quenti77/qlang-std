@@ -276,9 +276,11 @@ fun name_of(p: ParamInfo, a: AnnotationInfo) -> string
   if given == none or given == "" then p.name else given end
 end
 
+--" A form, unless the body is JSON sent with the default type of `curl -d`. --"
 fun is_form(req: Request) -> bool
   let kind = req.header("content-type") ?? ""
-  kind.lower().starts_with("application/x-www-form-urlencoded")
+  let body = (req.body ?? "").trim()
+  kind.lower().starts_with("application/x-www-form-urlencoded") and not body.starts_with("\{") and not body.starts_with("[")
 end
 
 --" A form read as the JSON the body type expects: each field is turned into a number or a

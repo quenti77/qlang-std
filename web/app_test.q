@@ -228,3 +228,9 @@ fun test_a_form_body_is_read_like_json()
   let bad = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "title=Fourth&stars=many" }
   assert_eq(app.handle(bad).status, 400)
 end
+
+fun test_json_sent_with_the_form_type_of_curl_is_still_json()
+  let app = build()
+  let sent = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "\{\"title\": \"Fifth\"\}" }
+  assert_eq(app.handle(sent).status, 201)
+end

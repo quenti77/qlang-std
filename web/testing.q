@@ -109,6 +109,17 @@ impl Client
     self.send("PATCH", path, body)
   end
 
+  --" `POST` of an HTML form: the fields as `application/x-www-form-urlencoded`. --"
+  public fun post_form(self, path: string, fields: map<string, string>) -> Reply
+    let pairs: array<string> = []
+    for name in fields.keys() do
+      pairs.push("{Url.encode(name)}={Url.encode(fields[name] ?? "")}")
+    end
+    let sent = self.build("POST", path, pairs.join("&"))
+    sent.headers["content-type"] = "application/x-www-form-urlencoded"
+    self.deliver(sent)
+  end
+
   --" `POST` with `value` as a JSON body. --"
   public fun post_json<T>(self, path: string, value: T) -> Reply
     self.send_json<T>("POST", path, value)
