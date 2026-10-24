@@ -162,6 +162,84 @@ The language part of a tag: `fr` for `fr-CA` and `fr_CA`.
 
 The built-in plural rule of a language.
 
+# jwt.q
+
+## `struct Key`
+
+A key, for signing or for checking.
+
+**Fields**
+
+- `alg: string` — `HS256`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384` or `EdDSA`.
+- `key: string` — The secret, or a PEM, or a JWK (JSON text).
+- `kid: string?` — The name that the token header carries, to tell the keys of a set apart.
+
+**Methods**
+
+- `fun hs256(secret: string) -> Key`
+- `fun rs256(pem: string) -> Key`
+- `fun rs384(pem: string) -> Key`
+- `fun rs512(pem: string) -> Key`
+- `fun es256(pem: string) -> Key`
+- `fun es384(pem: string) -> Key`
+- `fun eddsa(pem: string) -> Key`
+- `fun named(kid: string) -> Key` — The same key under a name (`kid`).
+
+## `struct Options`
+
+What to check besides the signature.
+
+**Fields**
+
+- `issuer: string?` — The `iss` the token must carry, or `none`.
+- `audience: string?` — The `aud` the token must carry (alone or in a list), or `none`.
+- `leeway: int` — Seconds of difference between two clocks that are accepted for `exp` and `nbf`.
+- `require_exp: bool` — A token without `exp` is refused.
+- `now: int` — The time in seconds; `0` is the clock (tests give theirs).
+
+**Methods**
+
+- `fun new() -> Options`
+
+## `struct Token`
+
+A token that passed every check.
+
+**Fields**
+
+- `alg: string`
+- `header: Json`
+- `payload: Json`
+
+**Methods**
+
+- `fun claims() -> Result<T, Error>` — The claims read as a structure of yours (the fields you do not name are ignored).
+- `fun get(name: string) -> Json?` — A claim, or `none`.
+- `fun subject() -> string?` — `sub`, or `none`.
+- `fun scopes() -> array<string>` — The permissions of the token: the words of a `scope` text (`"read write"`), or the texts of an `scopes` or `permissions` list.
+
+## `fun sign_json(payload: Json, key: Key) -> Result<string, Error>`
+
+Signs a payload (a `Json` object) and gives the token.
+
+## `fun sign(payload: T, key: Key) -> Result<string, Error>`
+
+Signs a structure (its public fields are the claims: `sub`, `exp`, `scope`...) and gives the token.
+
+## `fun error_kind(e: Error) -> string`
+
+Why a check failed: `malformed`, `algorithm`, `key`, `signature`, `expired`, `not_yet_valid`, `claims`.
+
+## `fun verify(token: string, keys: array<Key>, opts: Options) -> Result<Token, Error>`
+
+Checks a token against the keys and the options, and gives what it says.
+
+## `fun keys_from_jwks(text: string) -> Result<array<Key>, Error>`
+
+The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publishes it. The algorithm is
+the `alg` of each key, or `RS256`, `ES256`/`ES384`, `EdDSA` from its type. Keys that are not for signatures
+are left out.
+
 # queue.q
 
 ## `struct JobRow`
@@ -212,6 +290,9 @@ The jobs in a SQL database.
 - `fun done(job: JobRow) -> Result<bool, Error>`
 - `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
 - `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
+- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>`
+- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>`
+- `fun unlock(key: string) -> Result<bool, Error>`
 - `fun pending() -> Result<int, Error>`
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
@@ -237,10 +318,78 @@ with nothing to do waits on a list that every push writes to, so a new job is pi
 - `fun done(job: JobRow) -> Result<bool, Error>`
 - `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
 - `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
+- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>`
+- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>`
+- `fun unlock(key: string) -> Result<bool, Error>`
 - `fun pending() -> Result<int, Error>`
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>`
+
+## `struct Outcome`
+
+What a job does for the queue: `done`, `failed` (it will be tried again, or abandoned after the last
+attempt) or `released` (it waits, and the attempt is **not** counted: a middleware that says "not now").
+
+**Fields**
+
+- `status: string`
+- `why: string`
+- `delay: int`
+
+**Methods**
+
+- `fun done() -> Outcome`
+- `fun failed(why: string) -> Outcome`
+- `fun release(seconds: int) -> Outcome` — Wait `seconds`, then try again without using an attempt.
+
+## `struct Job`
+
+The job that a middleware sees.
+
+**Fields**
+
+- `id: string`
+- `kind: string`
+- `attempts: int`
+- `payload: string`
+
+## `struct Retry`
+
+`#[Retry(tries: 5, backoff: [10, 60, 300])]` on a job structure: how many times it is tried (3 by
+default), and the seconds to wait before attempt 2, 3...; the last number is used for the next ones.
+
+## `struct Unique`
+
+`#[Unique(seconds: 3600)]` on a job structure: while a job with the same fields waits or runs (at
+most `seconds`), pushing it again does nothing (`push` gives `false`).
+
+## `struct Delay`
+
+`#[Delay(seconds: 30)]` on a job structure: it starts that long after it is pushed, unless `push_in`
+says otherwise.
+
+## `struct Settings`
+
+What the annotations of a job structure say.
+
+**Fields**
+
+- `tries: int`
+- `backoff: array<int>`
+- `unique: int`
+- `delay: int`
+
+## `struct WorkOptions`
+
+What `work_with` does.
+
+**Fields**
+
+- `once: bool` — Stop when no job is due (instead of waiting for new ones).
+- `max_jobs: int` — Stop after this many jobs (0: no limit): a worker that restarts often keeps its memory small.
+- `max_seconds: int` — Stop after this many seconds (0: no limit), at the end of the job that is running.
+- `sleep_ms: int` — With a database: how long to wait between two looks when nothing is due.
 
 ## `struct Queue`
 
@@ -249,9 +398,9 @@ The queue and its handlers.
 **Fields**
 
 - `driver: QueueDriver`
-- `max_attempts: int`
+- `max_attempts: int` — Tries for a job that has no `#[Retry]`.
 - `timeout: int` — Seconds after which a job that is still marked as running is given to another worker.
-- `wait: int` — With Redis: seconds a worker waits for a new job before it looks again.
+- `wait: int` — With Redis: seconds a worker waits for a new job before it looks again (and checks for a stop order).
 - `clock: fun() -> int` — The time in milliseconds; tests give their own.
 
 **Methods**
@@ -260,15 +409,37 @@ The queue and its handlers.
 - `fun redis(redis: Redis, name: string) -> Queue` — A queue in Redis, under the name `name` (`"default"`).
 - `fun with(driver: QueueDriver) -> Queue` — A queue on a driver of your own.
 - `fun install() -> Result<bool, Error>` — Makes the tables if they do not exist (checks the connection with Redis).
-- `fun handle(handler: fun(T) -> string?)` — Says what to do with the jobs of type `T`: `none` when it is done, otherwise why it failed.
-- `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free.
+- `fun use(m: fun(Job, fun() -> Outcome) -> Outcome)` — Code around **every** job (see `JobMiddleware`); the first added is the outermost.
+- `fun handle(handler: fun(T) -> string?)` — Says what to do with the jobs of type `T`: `none` when it is done, otherwise why it failed. The annotations of `T` (`#[Retry]`, `#[Unique]`, `#[Delay]`) say how it is tried.
+- `fun handle_with(handler: fun(T) -> string?, around: array<fun(Job, fun() -> Outcome) -> Outcome>)` — Like `handle`, with middleware for this type of job only (inside the global ones).
+- `fun push(job: T) -> Result<bool, Error>` — Writes a job down, to be done as soon as a worker is free (or after its `#[Delay]`). Gives `false` when a `#[Unique]` job like it is already there.
 - `fun push_in(job: T, seconds: int) -> Result<bool, Error>` — Writes a job down, to be done after `seconds`.
 - `fun pending() -> Result<int, Error>` — How many jobs wait (or run).
 - `fun work_one() -> Result<bool, Error>` — Does the next due job. Gives `true` when there was one (done or failed), `false` when none was due.
-- `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones and never returns (with Redis the wait is on the queue itself, so a new job starts at once; with a database the worker looks again every second). A database error ends it with that error.
+- `fun work(once: bool) -> Result<int, Error>` — Does the due jobs. With `once`, ends when none is due; otherwise it waits for new ones. It also ends, at the end of the job that is running, when the process was told to stop (`Process.stopping()`).
+- `fun work_with(o: WorkOptions) -> Result<int, Error>` — `work` with its limits: see `WorkOptions`. Gives how many jobs were done. With Redis the wait is on the queue itself, so a new job starts at once; with a database the worker looks again after `sleep_ms`. A database error ends it with that error.
 - `fun failed() -> Result<array<FailedJob>, Error>` — The jobs that gave up, oldest first.
 - `fun retry_failed(id: string) -> Result<bool, Error>` — Puts a failed job back in the queue, with a fresh count of attempts. `false` if there is none with this id.
 - `fun forget_failed(id: string) -> Result<bool, Error>` — Deletes a failed job. `false` if there is none with this id.
+
+## `fun rate_limited(cache: Cache, key: fun(Job) -> string, limit: int, seconds: int) -> fun(Job, fun() -> Outcome) -> Outcome`
+
+A middleware: at most `limit` jobs of the same key (by default their type) per `seconds`; the others wait
+for the next window, without using an attempt. The count is in `cache`: with Redis it is exact for every
+worker.
+
+## `fun without_overlapping(cache: Cache, key: fun(Job) -> string, expire_after: int, release_after: int) -> fun(Job, fun() -> Outcome) -> Outcome`
+
+A middleware: two jobs with the same key never run together; the second waits `release_after` seconds,
+without using an attempt. `expire_after` frees the key if a worker dies.
+
+## `fun by_kind(job: Job) -> string`
+
+A key: the type of the job.
+
+## `fun by_payload(job: Job) -> string`
+
+A key: the type and the fields of the job.
 
 # template.q
 
@@ -428,6 +599,30 @@ The application.
 - `fun controller_from_container()` — Like `controller`, with the instance taken from the container (a provider returns `T`).
 - `fun validate() -> array<string>` — Every mistake of wiring, as texts (empty when all is well): handlers that cannot be built, services that are missing or in a cycle, routes hidden by an earlier one. Call it when the application starts.
 - `fun handle(req: Request) -> Response` — The response to a request: the middleware, then the route that takes it.
+
+# web/auth.q
+
+## `fun jwt_guard(keys: array<Key>, options: Options) -> fun(Request) -> Response?`
+
+Lets through the requests with a valid token: its signature and its dates are checked with `keys` and
+`options`. The token is kept for the route (`token_of`, `claims_of`).
+
+## `fun token_of(req: Request) -> Token?`
+
+The token a `jwt_guard` accepted for this request.
+
+## `fun claims_of(req: Request) -> T?`
+
+The claims of that token, read as a structure of yours.
+
+## `fun scope_guard(required: array<string>) -> fun(Request) -> Response?`
+
+Lets through the tokens that have **all** of these permissions (`scope: "read write"`, or a list in
+`scopes` or `permissions`); the others get `403`. Put it after `jwt_guard`.
+
+## `fun fetch_jwks(url: string, cache: Cache, ttl: int) -> Result<array<Key>, Error>`
+
+The keys of the JWKS published at `url`, kept `ttl` seconds in the cache.
 
 # web/cache.q
 
