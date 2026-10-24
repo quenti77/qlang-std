@@ -85,3 +85,56 @@ fun test_the_bus_shares_messages_between_connections_through_the_database()
   clock[0] += 3600000
   assert_eq(bus.prune(60).unwrap(), 3)
 end
+
+fun test_a_relay_reads_the_bus_once_for_all_the_connections_of_a_worker()
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let bus = ws.Bus.new(db, "sqlite")
+  let clock = [1000000]
+  bus.clock = fun() -> int clock[0] end
+  bus.install().unwrap()
+  let hub = ws.Hub.new()
+  let relay = ws.Relay.new(bus, hub, 250)
+  let handler = WebSocketHandler {
+    on_open: fun(c: WebSocket)
+      hub.join("lobby", c)
+      relay.watch("lobby")
+    end,
+    on_message: fun(c: WebSocket, m: WsMessage) bus.publish("lobby", m.text ?? "").unwrap() end,
+    on_tick: fun(c: WebSocket) relay.pump() end,
+  }
+  let make = fun(id: string) -> WebSocket
+    WebSocket { id: id, request: Request { method: "GET", url: "/", path: "/" } }
+  end
+  let a = make("a")
+  let b = make("b")
+  let join = fun(c: WebSocket)
+    hub.join("lobby", c)
+    relay.watch("lobby")
+  end
+  join(a)
+  join(b)
+  let say = handler.on_message
+  -- the first read happens at once: nothing yet
+  assert_eq(relay.pump(), 0)
+  say(a, WsMessage { text: "hello" })
+  -- not due yet: nothing is read
+  assert_eq(relay.pump(), 0)
+  clock[0] += 300
+  assert_eq(relay.pump(), 1)
+  let texts = fun(c: WebSocket) -> array<string> c.take_frames().map(fun(f: WsFrame) -> string f.text end) end
+  assert_eq(texts(a), ["hello"])
+  assert_eq(texts(b), ["hello"])
+  -- nothing new: the next read finds nothing
+  clock[0] += 300
+  assert_eq(relay.pump(), 0)
+  -- a room nobody listens to is not read, and what was said meanwhile is not replayed
+  hub.leave(a)
+  hub.leave(b)
+  say(a, WsMessage { text: "to nobody" })
+  clock[0] += 300
+  assert_eq(relay.pump(), 0)
+  join(b)
+  clock[0] += 300
+  assert_eq(relay.pump(), 0)
+  assert_eq(b.take_frames().len(), 0)
+end

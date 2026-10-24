@@ -10,15 +10,19 @@ const PAGE = fs.read("examples/chat/index.html").unwrap()
 let db = Db.connect(env.get("CHAT_DB") ?? "sqlite://:memory:").unwrap()
 let bus = ws.Bus.new(db, "sqlite")
 bus.install().unwrap()
+-- the connections of this worker, and one read of the bus for all of them
+let hub = ws.Hub.new()
+let relay = ws.Relay.new(bus, hub, 250)
 
 let app = web.App.new([])
 app.get("/", fun(req: Request) -> Response Response.html(PAGE) end)
 app.get("/ws", fun(req: Request) -> Response
   let name = req.query["name"] ?? "anon"
   Response.websocket(WebSocketHandler {
-    tick_ms: 300,
+    tick_ms: 100,
     on_open: fun(c: WebSocket)
-      bus.deliver(c, "lobby")
+      hub.join("lobby", c)
+      relay.watch("lobby")
       bus.publish("lobby", "{name} joined").unwrap()
     end,
     on_message: fun(c: WebSocket, m: WsMessage)
@@ -27,7 +31,8 @@ app.get("/ws", fun(req: Request) -> Response
         bus.publish("lobby", "{name}: {text}").unwrap()
       end
     end,
-    on_tick: fun(c: WebSocket) bus.deliver(c, "lobby") end,
+    on_tick: fun(c: WebSocket) relay.pump() end,
+    on_close: fun(c: WebSocket) hub.leave(c) end,
   })
 end)
 
