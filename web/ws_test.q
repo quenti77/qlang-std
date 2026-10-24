@@ -175,3 +175,26 @@ fun test_redis_pushes_messages_to_every_worker_without_any_query()
   assert_eq(a.take_frames().map(fun(f: WsFrame) -> string f.text end), ["hello"])
   assert_eq(b.take_frames().map(fun(f: WsFrame) -> string f.text end), ["hello"])
 end
+
+fun test_a_client_that_reconnects_gets_the_messages_it_missed_with_their_numbers()
+  let bus = ws.Bus.new(Db.connect("sqlite://:memory:").unwrap(), "sqlite")
+  bus.numbered = true
+  bus.install().unwrap()
+  bus.publish("news", "one").unwrap()
+  bus.publish("news", "two").unwrap()
+  bus.publish("news", "three").unwrap()
+  let conn = WebSocket { id: "c", request: Request { method: "GET", url: "/", path: "/" } }
+  -- the client saw number 1: it hears 2 and 3, as numbered frames
+  assert_eq(bus.replay(conn, "news", 1), 2)
+  let frames = conn.take_frames().map(fun(f: WsFrame) -> string f.text end)
+  assert_eq(frames.len(), 2)
+  let second = Json.parse(frames[0]).unwrap()
+  assert_eq((second.get("id") ?? Json.null()).as_number() as int, 2)
+  assert_eq((second.get("text") ?? Json.null()).as_string(), "two")
+  -- and it goes on from there, without hearing them twice
+  bus.deliver(conn, "news")
+  assert_eq(conn.take_frames().len(), 0)
+  bus.publish("news", "four").unwrap()
+  bus.deliver(conn, "news")
+  assert_eq((Json.parse(conn.take_frames()[0].text).unwrap().get("text") ?? Json.null()).as_string(), "four")
+end

@@ -202,3 +202,36 @@ fun test_a_released_job_keeps_its_attempts()
   assert_eq(ran[0], 1)
   assert_eq(queue.failed().unwrap().len(), 0)
 end
+
+struct Part
+  public n: int
+end
+
+struct Whole
+  public total: int
+end
+
+fun test_a_batch_and_a_chain_work_on_redis_and_a_second_queue_goes_first()
+  let clock = [1000000]
+  let queue = fresh(clock, "t9")
+  if queue == none then
+    return
+  end
+  let r = Redis.connect(env.get("QLANG_TEST_REDIS") ?? "").unwrap()
+  queue.lane("high", qq.RedisDriver { redis: r, name: "t9high" })
+  let seen: array<string> = []
+  queue.handle<Part>(fun(p: Part) -> string?
+    seen.push("part{p.n}")
+    none
+  end)
+  queue.handle<Whole>(fun(w: Whole) -> string?
+    seen.push("whole{w.total}")
+    none
+  end)
+  queue.batch().add(Part { n: 1 }).add(Part { n: 2 }).when_done(Whole { total: 3 }).dispatch().unwrap()
+  assert_eq(queue.work(true).unwrap(), 3)
+  assert_eq(seen, ["part1", "part2", "whole3"])
+  queue.chain().add(Part { n: 7 }).add(Whole { total: 7 }).dispatch().unwrap()
+  assert_eq(queue.work(true).unwrap(), 2)
+  assert_eq(seen.len(), 5)
+end

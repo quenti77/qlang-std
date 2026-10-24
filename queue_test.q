@@ -319,3 +319,165 @@ fun test_work_with_stops_after_a_number_of_jobs()
   assert_eq(queue.pending().unwrap(), 3)
   assert_eq(queue.work_with(qq.WorkOptions { once: true }).unwrap(), 3)
 end
+
+#[qq.OnQueue(name: "high")]
+struct Urgent
+  public n: int
+end
+
+struct Step1
+  public n: int
+end
+
+struct Step2
+  public n: int
+end
+
+struct Summary
+  public total: int
+end
+
+struct Broken
+  public n: int
+end
+
+struct Alarm
+  public why: string
+end
+
+--" A queue with a second queue, `high`, in the same database. --"
+fun with_high(clock: array<int>) -> qq.Queue
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let queue = qq.Queue.new(db, "sqlite")
+  queue.lane("high", qq.DbDriver { db: db, dialect: "sqlite", table: "jobs_high" })
+  queue.clock = fun() -> int clock[0] end
+  queue.install().unwrap()
+  queue
+end
+
+fun test_a_job_goes_to_the_queue_its_annotation_names_and_high_goes_first()
+  let clock = [1000000]
+  let queue = with_high(clock)
+  let order: array<string> = []
+  queue.handle<Resize>(fun(r: Resize) -> string?
+    order.push("resize")
+    none
+  end)
+  queue.handle<Urgent>(fun(u: Urgent) -> string?
+    order.push("urgent")
+    none
+  end)
+  queue.push(Resize { id: 1 }).unwrap()
+  queue.push(Urgent { n: 1 }).unwrap()
+  assert_eq(queue.pending().unwrap(), 2)
+  -- the order of the queues decides: serve `high` first
+  let done = queue.work_with(qq.WorkOptions { once: true, queues: ["high", "default"] }).unwrap()
+  assert_eq(done, 2)
+  assert_eq(order, ["urgent", "resize"])
+end
+
+fun test_a_worker_can_serve_one_queue_only_and_an_unknown_queue_is_an_error()
+  let clock = [1000000]
+  let queue = with_high(clock)
+  let order: array<string> = []
+  queue.handle<Resize>(fun(r: Resize) -> string?
+    order.push("resize")
+    none
+  end)
+  queue.handle<Urgent>(fun(u: Urgent) -> string?
+    order.push("urgent")
+    none
+  end)
+  queue.push(Resize { id: 1 }).unwrap()
+  queue.push_on("high", Resize { id: 2 }).unwrap()
+  assert_eq(queue.work_with(qq.WorkOptions { once: true, queues: ["default"] }).unwrap(), 1)
+  assert_eq(queue.pending().unwrap(), 1)
+  assert(queue.work_with(qq.WorkOptions { once: true, queues: ["nope"] }).is_err())
+end
+
+fun test_a_chain_runs_its_jobs_in_order_and_stops_at_the_first_that_gives_up()
+  let clock = [1000000]
+  let queue = with_high(clock)
+  let ran: array<string> = []
+  queue.handle<Step1>(fun(s: Step1) -> string?
+    ran.push("one")
+    none
+  end)
+  queue.handle<Step2>(fun(s: Step2) -> string?
+    ran.push("two")
+    none
+  end)
+  queue.chain().add(Step1 { n: 1 }).add(Step2 { n: 2 }).add(Step1 { n: 3 }).dispatch().unwrap()
+  assert_eq(queue.pending().unwrap(), 1)
+  assert_eq(queue.work(true).unwrap(), 3)
+  assert_eq(ran, ["one", "two", "one"])
+
+  -- a failing link: the rest never starts and the alarm is raised
+  let alarms: array<string> = []
+  queue.max_attempts = 1
+  queue.handle<Broken>(fun(b: Broken) -> string?
+    "boom"
+  end)
+  queue.handle<Alarm>(fun(a: Alarm) -> string?
+    alarms.push(a.why)
+    none
+  end)
+  queue.chain().add(Step1 { n: 9 }).add(Broken { n: 1 }).add(Step2 { n: 9 }).on_failure(Alarm { why: "chain" }).dispatch().unwrap()
+  queue.work(true).unwrap()
+  assert_eq(ran, ["one", "two", "one", "one"])
+  assert_eq(alarms, ["chain"])
+end
+
+fun test_a_batch_pushes_its_follow_up_when_every_job_is_done_and_its_alarm_once()
+  let clock = [1000000]
+  let queue = with_high(clock)
+  let total = [0]
+  let follow: array<int> = []
+  queue.handle<Resize>(fun(r: Resize) -> string?
+    total[0] += r.id
+    none
+  end)
+  queue.handle<Summary>(fun(s: Summary) -> string?
+    follow.push(s.total)
+    none
+  end)
+  queue.batch().add(Resize { id: 1 }).add(Resize { id: 2 }).add(Resize { id: 3 }).when_done(Summary { total: 6 }).dispatch().unwrap()
+  -- the follow-up only exists once the three are done
+  assert_eq(queue.work_one().unwrap(), true)
+  assert_eq(queue.work_one().unwrap(), true)
+  assert_eq(queue.pending().unwrap(), 1)
+  assert_eq(queue.work_one().unwrap(), true)
+  assert_eq(queue.pending().unwrap(), 1)
+  assert_eq(queue.work_one().unwrap(), true)
+  assert_eq(total[0], 6)
+  assert_eq(follow, [6])
+
+  -- two jobs give up: one alarm, and no follow-up
+  let alarms: array<string> = []
+  queue.max_attempts = 1
+  queue.handle<Broken>(fun(b: Broken) -> string?
+    "boom"
+  end)
+  queue.handle<Alarm>(fun(a: Alarm) -> string?
+    alarms.push(a.why)
+    none
+  end)
+  queue.batch().add(Broken { n: 1 }).add(Broken { n: 2 }).when_done(Summary { total: 0 }).when_failed(Alarm { why: "batch" }).dispatch().unwrap()
+  queue.work(true).unwrap()
+  assert_eq(alarms, ["batch"])
+  assert_eq(follow, [6])
+  assert_eq(queue.failed().unwrap().len(), 2)
+end
+
+fun test_an_empty_batch_pushes_the_follow_up_at_once()
+  let clock = [1000000]
+  let queue = with_high(clock)
+  let follow: array<int> = []
+  queue.handle<Summary>(fun(s: Summary) -> string?
+    follow.push(s.total)
+    none
+  end)
+  queue.batch().when_done(Summary { total: 1 }).dispatch().unwrap()
+  queue.work(true).unwrap()
+  assert_eq(follow, [1])
+end

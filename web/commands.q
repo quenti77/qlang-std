@@ -99,8 +99,14 @@ fun locale_missing(#[cli.Arg(description: "the language to check")] locale: stri
 end
 
 #[cli.Command("queue:work", "Does the jobs of the queue")]
-fun queue_work(queue: jobs.Queue, console: cli.Console, #[cli.Opt(description: "stop when no job is due")] once: bool, #[cli.Opt(name: "max-jobs", description: "stop after this many jobs")] max_jobs: int?, #[cli.Opt(name: "max-time", description: "stop after this many seconds")] max_time: int?, #[cli.Opt(description: "milliseconds between two looks (database queue)")] sleep: int?) -> Result<int, Error>
-  let done = queue.work_with(jobs.WorkOptions { once: once, max_jobs: max_jobs ?? 0, max_seconds: max_time ?? 0, sleep_ms: sleep ?? 1000 })
+fun queue_work(queue: jobs.Queue, console: cli.Console, #[cli.Opt(description: "stop when no job is due")] once: bool, #[cli.Opt(name: "max-jobs", description: "stop after this many jobs")] max_jobs: int?, #[cli.Opt(name: "max-time", description: "stop after this many seconds")] max_time: int?, #[cli.Opt(description: "milliseconds between two looks (database queue)")] sleep: int?, #[cli.Opt(description: "the queues to serve, the most important first: high,default")] queues: string?) -> Result<int, Error>
+  let names: array<string> = []
+  for n in (queues ?? "").split(",") do
+    if n.trim() != "" then
+      names.push(n.trim())
+    end
+  end
+  let done = queue.work_with(jobs.WorkOptions { once: once, max_jobs: max_jobs ?? 0, max_seconds: max_time ?? 0, sleep_ms: sleep ?? 1000, queues: names })
   if done.is_err() then
     return Result<int, Error>.Err(done.unwrap_err())
   end
@@ -114,7 +120,7 @@ fun queue_failed(queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
   if found.is_err() then
     return Result<int, Error>.Err(found.unwrap_err())
   end
-  console.table(["id", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> [j.id, j.kind, "{j.attempts}", j.error] end))
+  console.table(["id", "queue", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> [j.id, j.queue, j.kind, "{j.attempts}", j.error] end))
   Result<int, Error>.Ok(0)
 end
 

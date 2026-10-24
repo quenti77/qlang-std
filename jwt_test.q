@@ -133,3 +133,21 @@ fun test_a_jwks_gives_keys_that_verify_tokens()
   let token = jwt.sign(Session { sub: "g", exp: 2000 }, jwt.Key.es256(ec_private()).named("k1")).unwrap()
   assert_eq(jwt.verify(token, keys, at(1000)).unwrap().subject(), "g")
 end
+
+fun test_hs384_hs512_and_pss_tokens_are_signed_and_checked()
+  let long = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  for key in [jwt.Key.hs384(long), jwt.Key.hs512(long), jwt.Key.ps256(rsa_private()), jwt.Key.ps384(rsa_private()), jwt.Key.ps512(rsa_private())] do
+    let token = jwt.sign(Session { sub: "7", exp: 2000 }, key).unwrap()
+    let check = if key.alg.starts_with("HS") then key else public_key(key.alg) end
+    assert_eq(jwt.verify(token, [check], at(1000)).unwrap().subject(), "7")
+  end
+  -- a secret shorter than the hash is refused, in both directions
+  assert(jwt.sign(Session { sub: "7", exp: 2000 }, jwt.Key.hs512("short")).is_err())
+  let token = jwt.sign(Session { sub: "7", exp: 2000 }, jwt.Key.hs384(long)).unwrap()
+  -- HS384 is not accepted where only HS512 is expected
+  assert_eq(jwt.error_kind(jwt.verify(token, [jwt.Key.hs512(long)], at(1000)).unwrap_err()), "algorithm")
+end
+
+fun public_key(alg: string) -> jwt.Key
+  jwt.Key { alg: alg, key: rsa_public() }
+end

@@ -31,7 +31,7 @@ and renew it with a refresh token that you keep in your database, where you can 
 
 --" A key, for signing or for checking. --"
 struct Key
-  --" `HS256`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384` or `EdDSA`. --"
+  --" `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `PS256`, `PS384`, `PS512`, `ES256`, `ES384` or `EdDSA` (the HS384, HS512 and PS ones need `qlang` 0.55 or later). --"
   public alg: string
   --" The secret, or a PEM, or a JWK (JSON text). --"
   public key: string
@@ -44,6 +44,16 @@ impl Key
     Key { alg: "HS256", key: secret }
   end
 
+  --" HMAC with SHA-384: a secret of at least 48 characters. --"
+  public fun hs384(secret: string) -> Key
+    Key { alg: "HS384", key: secret }
+  end
+
+  --" HMAC with SHA-512: a secret of at least 64 characters. --"
+  public fun hs512(secret: string) -> Key
+    Key { alg: "HS512", key: secret }
+  end
+
   public fun rs256(pem: string) -> Key
     Key { alg: "RS256", key: pem }
   end
@@ -54,6 +64,19 @@ impl Key
 
   public fun rs512(pem: string) -> Key
     Key { alg: "RS512", key: pem }
+  end
+
+  --" RSA-PSS with SHA-256 (the padding that is recommended over RS256). --"
+  public fun ps256(pem: string) -> Key
+    Key { alg: "PS256", key: pem }
+  end
+
+  public fun ps384(pem: string) -> Key
+    Key { alg: "PS384", key: pem }
+  end
+
+  public fun ps512(pem: string) -> Key
+    Key { alg: "PS512", key: pem }
   end
 
   public fun es256(pem: string) -> Key
@@ -157,11 +180,26 @@ fun unb64(text: string) -> string?
   if b == none then none else b.to_string() end
 end
 
+-- Shortest secret for each HMAC algorithm: the size of its hash, as for RFC 7518.
+fun secret_length(alg: string) -> int
+  if alg == "HS256" then
+    return 32
+  end
+  if alg == "HS384" then
+    return 48
+  end
+  if alg == "HS512" then
+    return 64
+  end
+  0
+end
+
 fun signature_of(key: Key, input: string) -> Result<bytes, Error>
+  let need = secret_length(key.alg)
+  if need > 0 and key.key.len() < need then
+    return fail<bytes>("the {key.alg} secret must be at least {need} characters long")
+  end
   if key.alg == "HS256" then
-    if key.key.len() < 32 then
-      return fail<bytes>("the HS256 secret must be at least 32 characters long")
-    end
     return Result<bytes, Error>.Ok(Hash.hmac_sha256_raw(key.key.to_bytes(), input.to_bytes()))
   end
   Crypto.sign(key.alg, key.key, input.to_bytes())
@@ -225,6 +263,9 @@ fun check_signature(key: Key, input: string, sig: bytes) -> bool
   if key.alg == "HS256" then
     let expected = signature_of(key, input)
     return expected.is_ok() and Crypto.equal_bytes(expected.unwrap(), sig)
+  end
+  if secret_length(key.alg) > 0 and key.key.len() < secret_length(key.alg) then
+    return false
   end
   let r = Crypto.verify(key.alg, key.key, input.to_bytes(), sig)
   r.is_ok() and r.unwrap()
@@ -347,7 +388,7 @@ fun keys_from_jwks(text: string) -> Result<array<Key>, Error>
         alg = if crv != none and crv.is_string() and crv.as_string() == "P-384" then "ES384" else "ES256" end
       end
     end
-    if alg == "" or alg == "HS256" then
+    if alg == "" or secret_length(alg) > 0 then
       continue
     end
     let kid_json = jwk.get("kid")
