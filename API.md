@@ -1,3 +1,84 @@
+# cli.q
+
+## `struct Command`
+
+`#[Command("db:migrate", "Runs the migrations")]`: this function is a command.
+
+## `struct Arg`
+
+`#[Arg]`: a positional argument. The name shown in the usage defaults to the parameter's.
+
+## `struct Opt`
+
+`#[Opt(name: "count", short: "c", description: "...")]`: an option `--count` (`-c`).
+
+## `struct Console`
+
+What a command talks to: standard output and input, or lists in memory for a test.
+
+**Fields**
+
+- `out: array<string>`
+- `err: array<string>`
+
+**Methods**
+
+- `fun stdio() -> Console` — The terminal: `line` prints, `error` writes on the error output, `ask` reads.
+- `fun captured(answers: array<string>) -> Console` — A console that keeps what is written; `answers` are what `ask` and `confirm` receive.
+- `fun line(text: string)`
+- `fun error(text: string)`
+- `fun output() -> string` — Everything `line` wrote (captured console), one line each.
+- `fun errors() -> string` — Everything `error` wrote (captured console).
+- `fun ask(question: string) -> string` — Shows the question and gives the line the user types.
+- `fun confirm(question: string, fallback: bool) -> bool` — Asks a yes/no question; an empty answer is `fallback`.
+- `fun table(headers: array<string>, rows: array<array<string>>)` — A table: the headers, a line of dashes, then the rows, each column as wide as its widest cell.
+
+## `struct Param`
+
+One parameter of a command, as the command line sees it.
+
+**Fields**
+
+- `info: ParamInfo`
+- `kind: string` — `arg`, `opt` or `service`.
+- `name: string`
+- `short: string`
+- `description: string`
+- `flag: bool`
+- `many: bool`
+- `optional: bool`
+
+## `struct CommandDef`
+
+A command found by its annotation.
+
+**Fields**
+
+- `name: string`
+- `description: string`
+- `params: array<Param>`
+- `run: Callable`
+
+## `struct Cli`
+
+The set of commands of a program.
+
+**Fields**
+
+- `container: Container`
+- `program: string`
+
+**Methods**
+
+- `fun new(providers: array<Callable>) -> Cli` — A program whose services come from these provider functions (may be empty).
+- `fun named(program: string)` — The name of the program in the usage lines.
+- `fun add(found: array<Callable>)` — Adds the functions that carry `#[Command]`.
+- `fun validate() -> array<string>` — What is wrong with the commands: duplicate names, an `Arg` after an array `Arg`, a service that no provider gives. Empty when all is well.
+- `fun list(console: Console)` — The list of commands, grouped by the part before the colon.
+- `fun usage(c: CommandDef, console: Console)` — The usage of one command: its form, then its arguments and options.
+- `fun main()` — Runs the program with its arguments (`env.args()`) on the terminal and ends the process with the exit code.
+- `fun run(args: array<string>, console: Console) -> int` — Runs one command line and gives its exit code: `0` all went well, `1` the command failed, `2` the command line is wrong, `127` no such command. Nothing is written but on `console`.
+
 # csv.q
 
 ## `fun parse(text: string) -> Result<array<array<string>>, Error>`
@@ -28,6 +109,58 @@ quoted only when it has to be (it holds the separator, a quote, or a new line).
 ## `fun to_text_with(rows: array<array<string>>, delimiter: string) -> string`
 
 Like `to_text`, with another one-character separator.
+
+# i18n.q
+
+## `struct Translator`
+
+Messages by language.
+
+**Fields**
+
+- `default_locale: string`
+- `messages: map<string, map<string, string>>`
+- `rules: map<string, fun(int) -> string>`
+
+**Methods**
+
+- `fun new(default_locale: string) -> Translator` — A translator whose fallback language is `default_locale`.
+- `fun add(locale: string, key: string, message: string)` — Sets (or replaces) one message. For plural forms, add `key#one`, `key#other`...
+- `fun plural_rule(language: string, rule: fun(int) -> string)` — Uses another plural rule for a language (`one`, `few`, `many`, `other`...).
+- `fun add_json(locale: string, text: string) -> Result<int, Error>` — Adds the messages of a JSON text. `err` when it is not an object of messages.
+- `fun load(locale: string, path: string) -> Result<int, Error>` — Reads the messages of `locale` from a JSON file.
+- `fun chain(locale: string) -> array<string>` — The locales tried for `locale`, most specific first, ending with the default.
+- `fun has(locale: string, key: string) -> bool` — Whether a message exists for `key` in `locale` or a fallback.
+- `fun t(locale: string, key: string, params: map<string, string>) -> string` — The message, with `{name}` placeholders filled from `params`; the key when there is none.
+- `fun tn(locale: string, key: string, count: int, params: map<string, string>) -> string` — The message for `count`, in the plural form of the language. `{count}` is filled in too.
+- `fun number(locale: string, value: float, decimals: int) -> string` — A number written as the language does: `1 234,50` in French, `1,234.50` in English, `1.234,50` in German and Spanish.
+- `fun missing(locale: string) -> array<string>` — The keys the default language has and `locale` lacks: what is left to translate.
+- `fun negotiate(accept_language: string?, available: array<string>) -> string` — The language of a request: the best of `available` that `accept_language` (the header `Accept-Language`) asks for, by quality, or the default language.
+- `fun lang(locale: string) -> Lang` — The language `locale` as a `Lang`, to translate without repeating it.
+- `fun locales() -> array<string>` — The locales that have messages.
+
+## `struct Lang`
+
+A language chosen once, to translate without repeating it.
+
+**Fields**
+
+- `locale: string`
+- `translator: Translator`
+
+**Methods**
+
+- `fun t(key: string, params: map<string, string>) -> string`
+- `fun tn(key: string, count: int, params: map<string, string>) -> string`
+- `fun number(value: float, decimals: int) -> string`
+
+## `fun language_of(locale: string) -> string`
+
+The language part of a tag: `fr` for `fr-CA` and `fr_CA`.
+
+## `fun plural_rule(language: string, n: int) -> string`
+
+The built-in plural rule of a language.
 
 # template.q
 
@@ -228,6 +361,16 @@ A cache over a store.
 - `fun has(key: string) -> bool`
 - `fun remember(key: string, ttl: int, produce: fun() -> T) -> T` — The value under `key`; when there is none, `produce()` makes it and it is kept for `ttl` seconds.
 
+# web/commands.q
+
+## `struct Migrations`
+
+The migrations of the application, as a service.
+
+**Fields**
+
+- `list: array<Migration>`
+
 # web/container.q
 
 ## `struct Scoped`
@@ -293,6 +436,24 @@ Counts by header and path, so that one client has a budget per route.
 
 At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry
 `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
+
+# web/locale.q
+
+## `fun locale_of(req: Request) -> string`
+
+The language chosen for this request (the default one without the middleware).
+
+## `fun locale_middleware(tr: Translator, available: array<string>) -> fun(Request, fun(Request) -> Response) -> Response`
+
+Chooses the language of each request among `available` (see above).
+
+## `fun lang_for(req: Request, tr: Translator) -> Lang`
+
+A provider for `Lang` handler parameters: add it with `Reflect.callable(locale, "lang_for")`.
+
+## `fun use_locale(app: App, tr: Translator, available: array<string>)`
+
+Sets everything up: the translator and the `Lang` service in the container, and the middleware.
 
 # web/middleware.q
 
