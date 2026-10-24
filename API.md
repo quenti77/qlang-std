@@ -58,6 +58,19 @@ all the fine points of the format).
 
 `#[Get("/path")]`: this function answers `GET /path`.
 
+## `struct Controller`
+
+`#[Controller("/posts")]` on a struct: its methods that carry a route annotation are routes,
+all under this prefix. See `App.controller`.
+
+## `struct Doc`
+
+`#[Doc("Lists the posts")]`: what a route does, for the generated documentation (`openapi`).
+
+## `struct Tag`
+
+`#[Tag("posts")]`: groups routes in the generated documentation.
+
 ## `struct Post`
 
 `#[Post("/path")]`
@@ -102,6 +115,12 @@ The parameter is a header of the request; the name defaults to the parameter's.
 
 The parameter is a cookie of the request; the name defaults to the parameter's.
 
+## `struct ErrorEnvelope`
+
+**Fields**
+
+- `error: ErrorBody`
+
 ## `struct Problem`
 
 An error answer: a status, a message and, for a refused body, what is wrong with each
@@ -127,6 +146,7 @@ A route: a method, a pattern and what answers.
 - `pattern: string`
 - `run: fun(Request, Container) -> Response`
 - `needs: array<string>`
+- `source: Callable?` — The function or method that answers, for routes made from one.
 
 ## `fun to_response(a: Any) -> Response`
 
@@ -143,6 +163,7 @@ The application.
 **Methods**
 
 - `fun new(providers: array<Callable>) -> App` — An application whose services come from these provider functions. Functions that carry a route annotation are handlers, not providers, and are left out.
+- `fun route_list() -> array<RouteDef>` — The routes added so far, in order.
 - `fun use(m: fun(Request, fun(Request) -> Response) -> Response)` — Registers a middleware. The first one added is the outermost.
 - `fun prefix(path: string)` — The routes added from now on start with this path (`"/api"`).
 - `fun rule(name: string, check: fun(AnnotationInfo, Any) -> string?)` — A rule for the validation of bodies: see `Validator.rule`.
@@ -155,8 +176,57 @@ The application.
 - `fun patch(path: string, h: fun(Request) -> Response)`
 - `fun delete(path: string, h: fun(Request) -> Response)`
 - `fun controllers(handlers: array<Callable>)` — Adds the functions with a route annotation (`#[Get("/x")]`, `#[Route(...)]`) as routes.
+- `fun controller(instance: T)` — Adds the public methods of `instance` that carry a route annotation as routes. The struct may carry `#[Controller("/prefix")]`. The instance lives as long as the application: what changes with each request (the user, a connection) comes in as a parameter of the method, like for a function.
+- `fun controller_from_container()` — Like `controller`, with the instance taken from the container (a provider returns `T`).
 - `fun validate() -> array<string>` — Every mistake of wiring, as texts (empty when all is well): handlers that cannot be built, services that are missing or in a cycle, routes hidden by an earlier one. Call it when the application starts.
 - `fun handle(req: Request) -> Response` — The response to a request: the middleware, then the route that takes it.
+
+# web/cache.q
+
+## `trait Store`
+
+Where a cache keeps its texts. `ttl` is in seconds; the store drops an entry once it is older.
+
+## `struct MemoryStore`
+
+A store in the memory of the worker.
+
+**Methods**
+
+- `fun new() -> MemoryStore`
+- `fun read(key: string) -> string?`
+- `fun write(key: string, value: string, ttl: int)`
+- `fun drop(key: string)`
+
+## `struct FileStore`
+
+A store with a file per key in `dir`, which must exist. The first line of a file is the
+moment (milliseconds) its entry expires.
+
+**Methods**
+
+- `fun new(dir: string) -> FileStore`
+- `fun read(key: string) -> string?`
+- `fun write(key: string, value: string, ttl: int)`
+- `fun drop(key: string)`
+
+## `struct Cache`
+
+A cache over a store.
+
+**Methods**
+
+- `fun new(store: Store) -> Cache`
+- `fun memory() -> Cache` — A cache in the memory of the worker.
+- `fun files(dir: string) -> Cache` — A cache in files of `dir` (shared by the workers).
+- `fun scoped(name: string) -> Cache` — The same store, with `name:` put before every key (one cache per feature).
+- `fun get_text(key: string) -> string?` — The text under `key`, or `none` when there is none or it has expired.
+- `fun put_text(key: string, value: string, ttl: int)`
+- `fun get(key: string) -> T?` — The value under `key` read as a `T`, or `none` (absent, expired, or not a `T`).
+- `fun put(key: string, value: T, ttl: int)` — Keeps `value` for `ttl` seconds.
+- `fun forget(key: string)` — Forgets `key`.
+- `fun has(key: string) -> bool`
+- `fun remember(key: string, ttl: int, produce: fun() -> T) -> T` — The value under `key`; when there is none, `produce()` makes it and it is kept for `ttl` seconds.
 
 # web/container.q
 
@@ -196,6 +266,34 @@ Services, built from providers.
 - `fun resolve(key: string, path: array<string>) -> Result<Any, Error>` — The service called `key` (a type name), as an `Any`. `path` is what is being built, to catch a service that needs itself.
 - `fun validate() -> array<string>` — Checks every provider without building anything: what is missing, what needs itself, and what lives longer than what it holds. The mistakes, one text each; empty when all is well. Call it once when the application starts.
 
+# web/events.q
+
+## `struct Events`
+
+A set of listeners, by the type of event.
+
+**Methods**
+
+- `fun new() -> Events`
+- `fun listen(handler: fun(E))` — Calls `handler` for every event of type `E` dispatched from now on.
+- `fun dispatch(event: E) -> int` — Tells the listeners of the type of `event`. Gives back how many were called.
+- `fun count() -> int` — How many listeners wait for events of type `E`.
+
+# web/limit.q
+
+## `fun by_header(name: string) -> fun(Request) -> string`
+
+Counts by the value of a request header (`"unknown"` when absent).
+
+## `fun by_path_and_header(name: string) -> fun(Request) -> string`
+
+Counts by header and path, so that one client has a budget per route.
+
+## `fun rate_limit(cache: Cache, limit: int, seconds: int, key_of: fun(Request) -> string) -> fun(Request, fun(Request) -> Response) -> Response`
+
+At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry
+`X-RateLimit-Limit` and `X-RateLimit-Remaining`.
+
 # web/middleware.q
 
 ## `fun logging() -> fun(Request, fun(Request) -> Response) -> Response`
@@ -208,11 +306,28 @@ Writes one line in the log for each request: `GET /posts/2 -> 200 (3 ms)`, at th
 Adds the usual protective headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
 `Referrer-Policy: same-origin`. A header the route already set is kept.
 
+## `struct CorsOptions`
+
+What `cors_with` allows.
+
+**Fields**
+
+- `origins: array<string>` — The origins that may call (`"https://app.example"`), or `"*"` for any.
+- `methods: array<string>`
+- `headers: array<string>` — The request headers allowed; empty means the ones the browser asks for.
+- `expose: array<string>` — Response headers the page may read (`X-Request-Id`...).
+- `credentials: bool` — Lets the page send cookies and credentials; then the origin is repeated, never `*`.
+- `max_age: int` — Seconds a browser may keep the answer to a preflight request.
+
 ## `fun cors(origins: array<string>) -> fun(Request, fun(Request) -> Response) -> Response`
 
 Lets browsers of these origins (`["https://app.example"]`, or `["*"]`) call the API from a
 page: answers the preflight `OPTIONS` request itself and adds `Access-Control-Allow-Origin` to
 the other answers.
+
+## `fun cors_with(o: CorsOptions) -> fun(Request, fun(Request) -> Response) -> Response`
+
+`cors` with every option: methods, headers, exposed headers, credentials, preflight cache.
 
 ## `fun bearer_token(check: fun(string) -> bool) -> fun(Request, fun(Request) -> Response) -> Response`
 
@@ -262,6 +377,21 @@ Where a migration stands.
 
 - `id: string`
 - `applied: bool`
+
+# web/openapi.q
+
+## `fun schema_of(t: TypeInfo, schemas: Schemas) -> Json`
+
+The schema of a type; structures are put in `schemas` and referred to.
+
+## `fun openapi(app: App, title: string, version: string) -> Json`
+
+The OpenAPI document of the routes of `app` (those made from functions or methods).
+
+## `fun openapi_route(app: App, path: string, title: string, version: string)`
+
+Adds `GET path` that answers the document (written when the first request comes, so every
+route is in it).
 
 # web/query.q
 
@@ -330,6 +460,51 @@ Like `sessions`, with the `Secure` attribute of the cookie as you choose it.
 ## `fun csrf_protect() -> fun(Request, fun(Request) -> Response) -> Response`
 
 Refuses the unsafe requests that do not carry the token of the session.
+
+# web/testing.q
+
+## `struct Reply`
+
+What the application answered.
+
+**Fields**
+
+- `status: int`
+- `headers: map<string, string>`
+- `body: string`
+- `cookies: array<Cookie>`
+
+**Methods**
+
+- `fun json() -> Result<T, Error>` — The body read as a `T`.
+- `fun header(name: string) -> string?` — The value of a header (the name is compared in lower case), or `none`.
+- `fun expect_status(code: int) -> Reply` — Fails the test, with the body, unless the status is `code`. Gives the reply back.
+- `fun expect_body_contains(text: string) -> Reply` — Fails the test unless the body contains `text`. Gives the reply back.
+
+## `struct Client`
+
+Sends requests to an application.
+
+**Fields**
+
+- `headers: map<string, string>`
+- `cookies: map<string, string>`
+
+**Methods**
+
+- `fun new(app: App) -> Client`
+- `fun header(name: string, value: string)` — A header sent with every request from now on.
+- `fun bearer(token: string)` — Sends `Authorization: Bearer token` with every request from now on.
+- `fun forget_cookies()` — Forgets the cookies.
+- `fun get(path: string) -> Reply`
+- `fun delete(path: string) -> Reply`
+- `fun post(path: string, body: string) -> Reply`
+- `fun put(path: string, body: string) -> Reply`
+- `fun patch(path: string, body: string) -> Reply`
+- `fun post_json(path: string, value: T) -> Reply` — `POST` with `value` as a JSON body.
+- `fun put_json(path: string, value: T) -> Reply`
+- `fun send_json(method: string, path: string, value: T) -> Reply`
+- `fun send(method: string, path: string, body: string?) -> Reply` — Sends a request. A query string in `path` is read as the server would.
 
 # web/validate.q
 

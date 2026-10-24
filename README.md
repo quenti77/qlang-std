@@ -42,11 +42,16 @@ import "@std/web/middleware.q" as mw
 | --- | --- |
 | [`web/container.q`](web/container.q) | conteneur d'injection : une fonction qui rend un `T` *fournit* un `T`, ses paramètres sont ses besoins ; singleton, `#[Scoped]` (par requête), `#[Transient]` ; `validate()` trouve ce qui manque ou boucle avant la première requête |
 | [`web/app.q`](web/app.q) | l'application : routes `#[web.Get("/users/:id")]`, paramètres remplis par `#[web.Path]`, `#[web.Query]`, `#[web.Body]` (JSON lu comme le type du paramètre, puis validé), `#[web.Header]`, `#[web.CookieValue]` ou par un service ; le résultat devient la réponse (JSON, `Result`, `HttpError`, `404` pour `none`) |
-| [`web/middleware.q`](web/middleware.q) | `logging`, `security_headers`, `cors`, `bearer_token`, `request_id` |
+| [`web/middleware.q`](web/middleware.q) | `logging`, `security_headers`, `cors` / `cors_with` (méthodes, en-têtes, identifiants), `bearer_token`, `request_id` |
 | [`web/validate.q`](web/validate.q) | règles en annotations sur les champs : `#[NotBlank]`, `#[Length(2, 40)]`, `#[Min(18)]`, `#[Email]`, `#[Pattern(...)]`, `#[OneOf([...])]`, `#[Valid]` (structures imbriquées) et les vôtres |
 | [`web/query.q`](web/query.q) | constructeur de requêtes SQL avec `?` partout et noms vérifiés ; lignes lues comme des structures |
 | [`web/migrate.q`](web/migrate.q) | migrations (`up` / `down`) appliquées dans une transaction, mémorisées dans `schema_migrations` |
 | [`web/session.q`](web/session.q) | sessions dans un cookie signé, messages flash, protection CSRF |
+| [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `json<T>()`, `expect_status` |
+| [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
+| [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`) sur un `Store` : mémoire du worker ou fichiers partagés |
+| [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` |
+| [`web/openapi.q`](web/openapi.q) | `openapi(app, titre, version)` : le document OpenAPI 3.1 d'après les routes, `openapi_route(app, "/openapi.json", ...)` |
 
 Un exemple complet (une API JSON avec SQLite) est dans [`examples/blog`](examples/blog) :
 
@@ -64,13 +69,18 @@ fun create(#[web.Body] input: NewPost, #[web.Header("X-User")] user: string, pos
 end
 ```
 
+Des routes peuvent aussi être les méthodes d'une structure : `#[web.Controller("/posts")]` sur la
+structure, `#[web.Get("/:id")]` sur ses méthodes publiques, puis `app.controller(Posts { ... })`
+(ou `app.controller_from_container<Posts>()` si un fournisseur rend une `Posts`). L'instance vit
+autant que l'application : ce qui change à chaque requête arrive en paramètre de la méthode.
+
 Les annotations s'écrivent avec le nom du module (`web.Get`) : `Post`, `Delete`... sont des noms de
 modèles trop courants pour les prendre.
 
 ### Ce que le paquet ne fait pas (encore)
 
-Événements, cache, traductions, commandes en ligne de commande, files de tâches, OpenAPI,
-WebSocket, contrôleurs en classes (les gestionnaires sont des fonctions), ORM à relations. Le
+Traductions, commandes en ligne de commande, files de tâches, WebSocket, ORM à relations,
+authentification toute faite (guards, JWT). Le
 serveur lui-même (`qlang serve`) reste derrière un proxy inverse pour TLS.
 
 La documentation de chaque fonction est dans [API.md](API.md) (générée par `qlang doc`).
