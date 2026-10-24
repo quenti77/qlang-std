@@ -1,0 +1,10 @@
+<!doctype html><meta charset=utf-8><title>Chat</title>
+<h1>Chat</h1><ul id=log></ul><input id=text autofocus><button id=go>Send</button>
+<script>
+const log = document.getElementById('log')
+const socket = new WebSocket((location.protocol == 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?name=' + encodeURIComponent(prompt('Your name') || 'anon'))
+socket.onmessage = (e) => { const li = document.createElement('li'); li.textContent = e.data; log.appendChild(li) }
+const send = () => { const t = document.getElementById('text'); if (t.value) { socket.send(t.value); t.value = '' } }
+document.getElementById('go').onclick = send
+document.getElementById('text').onkeydown = (e) => { if (e.key == 'Enter') send() }
+</script>
