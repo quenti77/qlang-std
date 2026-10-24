@@ -18,7 +18,7 @@ app.main()
 | `db:migrate` | applies the migrations that were not yet | `Migrator`, `Migrations` |
 | `db:rollback --steps 1` | undoes the last migrations | `Migrator`, `Migrations` |
 | `db:status` | which migrations are applied | `Migrator`, `Migrations` |
-| `queue:work` (`--once`) | does the jobs of the queue, waiting for new ones unless `--once` | `Queue` (with its handlers) |
+| `queue:work` (`--once`, `--max-jobs N`, `--max-time S`, `--sleep MS`) | does the jobs of the queue, waiting for new ones unless `--once`; leaves cleanly on Ctrl-C or `kill` after the job it is doing | `Queue` (with its handlers) |
 | `queue:failed` | the jobs that gave up | `Queue` |
 | `queue:retry <id>` | puts a failed job back in the queue | `Queue` |
 | `locale:missing fr` | the keys of the default language that `fr` lacks (exit code `1` if any) | `Translator` |
@@ -99,8 +99,8 @@ fun locale_missing(#[cli.Arg(description: "the language to check")] locale: stri
 end
 
 #[cli.Command("queue:work", "Does the jobs of the queue")]
-fun queue_work(queue: jobs.Queue, console: cli.Console, #[cli.Opt(description: "stop when no job is due")] once: bool) -> Result<int, Error>
-  let done = queue.work(once)
+fun queue_work(queue: jobs.Queue, console: cli.Console, #[cli.Opt(description: "stop when no job is due")] once: bool, #[cli.Opt(name: "max-jobs", description: "stop after this many jobs")] max_jobs: int?, #[cli.Opt(name: "max-time", description: "stop after this many seconds")] max_time: int?, #[cli.Opt(description: "milliseconds between two looks (database queue)")] sleep: int?) -> Result<int, Error>
+  let done = queue.work_with(jobs.WorkOptions { once: once, max_jobs: max_jobs ?? 0, max_seconds: max_time ?? 0, sleep_ms: sleep ?? 1000 })
   if done.is_err() then
     return Result<int, Error>.Err(done.unwrap_err())
   end

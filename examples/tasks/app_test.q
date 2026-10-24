@@ -1,7 +1,8 @@
 import "app.q" as tasks
 import "../../web/testing.q" as testing
 import Task from "providers.q"
-import Credentials, NewTask from "controllers.q"
+import Credentials, NewTask, Session from "controllers.q"
+import TokenResponse from "controllers.q"
 
 const ADA = Credentials { email: "ada@example.org", password: "correct horse" }
 
@@ -66,4 +67,20 @@ fun test_a_form_works_like_json()
   let client = signed_in()
   client.post_form("/tasks", {"title": "From a form"}).expect_status(201)
   client.post_form("/tasks", {"title": ""}).expect_status(422)
+end
+
+fun test_a_token_replaces_the_cookie_for_clients_that_are_not_browsers()
+  let client = testing.Client.new(tasks.build())
+  client.post_json("/register", ADA).expect_status(201)
+  client.post_json("/token", Credentials { email: "ada@example.org", password: "wrong password" }).expect_status(401)
+  client.get("/api/me").expect_status(401)
+  let issued = client.post_json("/token", ADA).expect_status(200).json<TokenResponse>().unwrap()
+  assert_eq(issued.token_type, "Bearer")
+  let api = testing.Client.new(tasks.build())
+  api.bearer(issued.access_token)
+  -- the other application has its own users, but the same secret: the token is accepted all the same
+  let who = api.get("/api/me").expect_status(200).json<Session>().unwrap()
+  assert_eq(who.email, "ada@example.org")
+  api.bearer(issued.access_token + "x")
+  api.get("/api/me").expect_status(401)
 end
