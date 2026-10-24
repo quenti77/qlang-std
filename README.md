@@ -36,6 +36,7 @@ import "@std/toml.q" as toml
 | Module | Rôle |
 | --- | --- |
 | [`cli.q`](cli.q) | commandes en ligne de commande : une fonction `#[cli.Command("db:migrate", "…")]` dont les paramètres sont `#[cli.Arg]` (positionnels, `array<T>` pour le reste), `#[cli.Opt(short: "n")]` (options ; `bool` = drapeau), une `Console` (`line`, `error`, `table`, `ask`, `confirm`) ou un service du conteneur ; code de sortie, aide générée (`help`, `commande --help`), suggestion en cas de faute de frappe, `Cli.run(args, console)` testable |
+| [`queue.q`](queue.q) | file de tâches dans la base : `queue.handle<T>(fun(job: T) -> string? ...)`, `queue.push(job)`, `push_in(job, secondes)`, reprises espacées (10 s, 1 min, 5 min, 15 min), tâches abandonnées (`failed`, `retry_failed`), une tâche laissée « en cours » par un worker mort est redonnée ; `queue.work(once)` dans un processus à part ou la commande `queue:work` |
 | [`i18n.q`](i18n.q) | traductions : fichiers JSON par langue, `{nom}` à remplir, formes du pluriel selon la langue (`tn`), repli `fr-CA` → `fr` → langue par défaut → la clé, choix de la langue d'après `Accept-Language`, nombres écrits à la manière de la langue, `missing` liste ce qui reste à traduire |
 
 ```
@@ -45,6 +46,8 @@ fun greet(#[cli.Arg] name: string, #[cli.Opt(short: "l")] loud: bool, console: c
   0
 end
 ```
+
+`examples/chat` est un salon de discussion WebSocket qui marche avec plusieurs workers (`CHAT_DB=sqlite://chat.db qlang serve examples/chat/main.q --workers 2`).
 
 `examples/blog/console.q` met ces commandes à côté de l'API : `qlang run examples/blog/console.q -- help`.
 
@@ -70,6 +73,7 @@ import "@std/web/middleware.q" as mw
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` |
 | [`web/locale.q`](web/locale.q) | la langue de la requête (`?lang=`, cookie, `Accept-Language`) et un service `Lang` pour les gestionnaires : `use_locale(app, traducteur, ["en", "fr"])` |
 | [`web/commands.q`](web/commands.q) | commandes prêtes à l'emploi : `routes:list`, `db:migrate`, `db:rollback`, `db:status`, `locale:missing` |
+| [`web/ws.q`](web/ws.q) | WebSocket : `Hub` (salons d'un worker), `Bus` (messages partagés par tous les workers à travers la base de données, `deliver` dans `on_tick`), `origin_guard` ; `WsClient` de `testing.q` teste un WebSocket sans réseau |
 | [`web/openapi.q`](web/openapi.q) | `openapi(app, titre, version)` : le document OpenAPI 3.1 d'après les routes, `openapi_route(app, "/openapi.json", ...)` |
 
 Un exemple complet (une API JSON avec SQLite) est dans [`examples/blog`](examples/blog) :
@@ -104,7 +108,7 @@ modèles trop courants pour les prendre.
 
 ### Ce que le paquet ne fait pas (encore)
 
-Files de tâches, WebSocket, ORM à relations, authentification toute faite (guards, JWT). Le
+ORM à relations, JWT tout fait, un courtier de messages pour des milliers de connexions WebSocket. Le
 serveur lui-même (`qlang serve`) reste derrière un proxy inverse pour TLS.
 
 La documentation de chaque fonction est dans [API.md](API.md) (générée par `qlang doc`).
