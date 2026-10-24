@@ -63,6 +63,19 @@ struct Controller
   prefix: string = ""
 end
 
+--" `#[Doc("Lists the posts")]`: what a route does, for the generated documentation (`openapi`). --"
+#[annotation]
+struct Doc
+  summary: string
+  description: string = ""
+end
+
+--" `#[Tag("posts")]`: groups routes in the generated documentation. --"
+#[annotation]
+struct Tag
+  name: string
+end
+
 --" `#[Post("/path")]` --"
 #[annotation]
 struct Post
@@ -172,6 +185,8 @@ struct RouteDef
   public pattern: string
   public run: fun(Request, di.Container) -> Response
   public needs: array<string>
+  --" The function or method that answers, for routes made from one. --"
+  public source: Callable?
 end
 
 fun problem<T>(status: int, message: string) -> Result<T, Problem>
@@ -276,6 +291,11 @@ impl App
     App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true }
   end
 
+  --" The routes added so far, in order. --"
+  public fun route_list(self) -> array<RouteDef>
+    self.routes
+  end
+
   --" Registers a middleware. The first one added is the outermost. --"
   public fun use(self, m: Middleware)
     self.middlewares.push(m)
@@ -309,6 +329,7 @@ impl App
       pattern: self.base + path,
       run: fun(req: Request, c: di.Container) -> Response h(req) end,
       needs: [],
+      source: none,
     })
   end
 
@@ -425,6 +446,7 @@ impl App
         res
       end,
       needs: needs,
+      source: c,
     })
   end
 
@@ -616,5 +638,5 @@ impl App
   end
 end
 
-export App, Problem, Handler, Middleware, RouteDef, to_response
-export Get, Post, Put, Patch, Delete, Route, Controller, Status, Path, Query, Body, Header, CookieValue
+export App, ErrorEnvelope, Problem, Handler, Middleware, RouteDef, to_response
+export Get, Post, Put, Patch, Delete, Route, Controller, Doc, Tag, Status, Path, Query, Body, Header, CookieValue
