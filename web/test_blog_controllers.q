@@ -81,3 +81,28 @@ impl Shelf
   end
 end
 export Shelf
+
+#[web.Get("/secret")]
+#[web.Guard("auth")]
+fun secret(req: Request) -> string
+  let who = req.attrs["who"]
+  if who == none then
+    return "for nobody"
+  end
+  let name = who.as<string>() ?? "?"
+  "for {name}"
+end
+
+#[web.Controller("/admin")]
+#[web.Guard("auth")]
+struct Admin
+  public tag: string
+end
+
+impl Admin
+  #[web.Get("/")]
+  public fun home(self) -> string
+    "admin {self.tag}"
+  end
+end
+export Admin
