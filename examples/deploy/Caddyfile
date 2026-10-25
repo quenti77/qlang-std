@@ -1,0 +1,10 @@
+# Caddy gets and renews the TLS certificate by itself, and passes WebSocket upgrades through.
+app.example.org {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		health_uri /health/ready
+		health_interval 10s
+		# a worker may be busy with a long request: do not cut a WebSocket
+		flush_interval -1
+	}
+}

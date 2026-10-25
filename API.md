@@ -245,6 +245,222 @@ The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publish
 the `alg` of each key, or `RS256`, `ES256`/`ES384`, `EdDSA` from its type. Keys that are not for signatures
 are left out.
 
+# mail.q
+
+## `struct Mail`
+
+An email. `text` and `html` are two versions of the body: give at least one.
+
+**Fields**
+
+- `sender: string` — `Name <address>` or `address`.
+- `to: array<string>`
+- `subject: string`
+- `text: string`
+- `html: string`
+- `cc: array<string>`
+- `bcc: array<string>`
+- `reply_to: string`
+
+## `trait Mailer`
+
+Where a mail goes.
+
+## `fun check(mail: Mail) -> string?`
+
+Why the mail cannot be sent, or `none`.
+
+## `struct MemoryMailer`
+
+Keeps the mails in memory: for tests.
+
+**Fields**
+
+- `sent: array<Mail>`
+
+**Methods**
+
+- `fun new() -> MemoryMailer`
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct LogMailer`
+
+Writes the mails in the log instead of sending them: for development.
+
+**Methods**
+
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct ResendMailer`
+
+[Resend](https://resend.com).
+
+**Fields**
+
+- `key: string`
+- `base: string`
+- `transport: fun(Request) -> Result<Response, Error>`
+
+**Methods**
+
+- `fun new(key: string) -> ResendMailer`
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct PostmarkMailer`
+
+[Postmark](https://postmarkapp.com).
+
+**Fields**
+
+- `token: string`
+- `base: string`
+- `transport: fun(Request) -> Result<Response, Error>`
+
+**Methods**
+
+- `fun new(token: string) -> PostmarkMailer`
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct SendgridMailer`
+
+[SendGrid](https://sendgrid.com).
+
+**Fields**
+
+- `key: string`
+- `base: string`
+- `transport: fun(Request) -> Result<Response, Error>`
+
+**Methods**
+
+- `fun new(key: string) -> SendgridMailer`
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct MailgunMailer`
+
+[Mailgun](https://www.mailgun.com); `base` is `https://api.eu.mailgun.net` for the European region.
+
+**Fields**
+
+- `key: string`
+- `domain: string`
+- `base: string`
+- `transport: fun(Request) -> Result<Response, Error>`
+
+**Methods**
+
+- `fun new(key: string, domain: string) -> MailgunMailer`
+- `fun send(mail: Mail) -> Result<bool, Error>`
+
+## `struct SendMail`
+
+A job that sends a mail: `queue.push(SendMail { mail: m })`, with `handle_sends(queue, mailer)` in the worker.
+
+**Fields**
+
+- `mail: Mail`
+
+## `fun handle_sends(queue: Queue, mailer: Mailer)`
+
+Teaches `queue` to do the `SendMail` jobs with `mailer` (a refused mail is tried again like any job).
+
+# notify.q
+
+## `struct Notification`
+
+What is told.
+
+**Fields**
+
+- `kind: string` — A short name for the sort of event (`invoice`, `comment`): the inbox keeps it.
+- `title: string`
+- `body: string`
+- `url: string` — A page to open, if any.
+
+## `trait Channel`
+
+A place where notifications go.
+
+## `struct MailChannel`
+
+Sends an email (`to` is the address).
+
+**Fields**
+
+- `mailer: Mailer`
+- `sender: string`
+
+**Methods**
+
+- `fun deliver(to: string, n: Notification) -> Result<bool, Error>`
+
+## `struct WebhookChannel`
+
+Posts to a chat webhook.
+
+**Fields**
+
+- `url: string`
+- `format: string` — `slack` (`{"text": ...}`), `discord` (`{"content": ...}`) or `json` (the notification itself).
+- `transport: fun(Request) -> Result<Response, Error>`
+
+**Methods**
+
+- `fun slack(url: string) -> WebhookChannel`
+- `fun discord(url: string) -> WebhookChannel`
+- `fun json(url: string) -> WebhookChannel`
+- `fun deliver(to: string, n: Notification) -> Result<bool, Error>`
+
+## `struct InboxItem`
+
+One line of the inbox.
+
+**Fields**
+
+- `id: int`
+- `user_id: string`
+- `kind: string`
+- `title: string`
+- `body: string`
+- `url: string`
+- `created_at: int`
+- `read_at: int?`
+
+## `struct InboxChannel`
+
+The in-app inbox of each user, in a table.
+
+**Fields**
+
+- `db: Db`
+- `dialect: string`
+- `table: string`
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(db: Db, dialect: string) -> InboxChannel`
+- `fun install() -> Result<bool, Error>`
+- `fun list(user: string, limit: int) -> Result<array<InboxItem>, Error>` — The newest notifications of a user (`limit` of them).
+- `fun unread_count(user: string) -> Result<int, Error>`
+- `fun mark_read(user: string, id: int) -> Result<bool, Error>` — Marks one notification of the user as read (a user cannot mark another's).
+- `fun mark_all_read(user: string) -> Result<int, Error>`
+- `fun deliver(to: string, n: Notification) -> Result<bool, Error>`
+
+## `struct Notifier`
+
+The channels of the application, by name.
+
+**Fields**
+
+- `channels: map<string, Channel>`
+
+**Methods**
+
+- `fun new() -> Notifier`
+- `fun channel(name: string, c: Channel)`
+- `fun send(names: array<string>, to: string, n: Notification) -> array<string>` — Sends on each named channel. Gives the errors, one per channel that failed (an empty list: all went well). An unknown channel name is an error too.
+
 # queue.q
 
 ## `struct JobRow`
@@ -509,6 +725,85 @@ A key: the type of the job.
 ## `fun by_payload(job: Job) -> string`
 
 A key: the type and the fields of the job.
+
+# s3.q
+
+## `struct S3`
+
+A bucket.
+
+**Fields**
+
+- `endpoint: string`
+- `region: string`
+- `access_key: string`
+- `secret: string`
+- `bucket: string`
+- `transport: fun(Request) -> Result<Response, Error>`
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(endpoint: string, region: string, access_key: string, secret: string, bucket: string) -> S3`
+- `fun sign(method: string, key: string, body: string, extra: map<string, string>) -> map<string, string>` — The headers of a signed request (`Authorization`, `x-amz-date`, `x-amz-content-sha256`).
+- `fun sign_hash(method: string, key: string, payload: string, extra: map<string, string>) -> map<string, string>` — Like `sign`, for a body whose SHA-256 (in hexadecimal) you already have.
+- `fun put(key: string, body: string, content_type: string) -> Result<bool, Error>` — Writes the object (text).
+- `fun put_bytes(key: string, data: bytes, content_type: string) -> Result<bool, Error>` — Writes the object from bytes (any file).
+- `fun get_bytes(key: string) -> Result<bytes?, Error>` — The object as bytes, or `none` when it does not exist.
+- `fun get(key: string) -> Result<string?, Error>` — The object as text, or `none` when it does not exist.
+- `fun exists(key: string) -> Result<bool, Error>` — Whether the object exists.
+- `fun delete(key: string) -> Result<bool, Error>` — Deletes the object (also fine when it was not there).
+- `fun presign(method: string, key: string, seconds: int) -> string` — A link that lets whoever has it do `method` (`GET`, `PUT`, `DELETE`) on the object for `seconds` (at most 7 days), without any key: for a browser that uploads or downloads by itself.
+
+# schedule.q
+
+## `struct Cron`
+
+A parsed cron expression.
+
+**Fields**
+
+- `minutes: array<int>`
+- `hours: array<int>`
+- `days: array<int>`
+- `months: array<int>`
+- `weekdays: array<int>`
+- `any_day: bool`
+- `any_weekday: bool`
+
+**Methods**
+
+- `fun parse(text: string) -> Result<Cron, Error>` — Reads `"m h dom mon dow"`.
+- `fun matches(at: datetime) -> bool` — Whether the expression matches this minute.
+
+## `struct Task`
+
+One task of the schedule.
+
+**Fields**
+
+- `name: string`
+- `cron: Cron`
+- `run: fun() -> string?`
+
+## `struct Schedule`
+
+A list of tasks.
+
+**Fields**
+
+- `cache: Cache`
+- `tasks: array<Task>`
+- `clock: fun() -> int` — The time in milliseconds; tests give their own.
+
+**Methods**
+
+- `fun new(cache: Cache) -> Schedule` — `cache` is where machines agree on who runs a minute.
+- `fun cron(name: string, expression: string, run: fun() -> string?)` — A task on a cron expression. Panics if the expression is wrong (it is a mistake in the program, found at start).
+- `fun every_minutes(name: string, n: int, run: fun() -> string?)` — A task every `n` minutes (1 to 59), or every `n/60` hours when `n` is a multiple of 60 up to a day.
+- `fun daily_at(name: string, hour: int, minute: int, run: fun() -> string?)` — A task every day at `hour`:`minute` UTC.
+- `fun run_due() -> int` — Runs the tasks that are due this minute and that nobody ran yet. Gives how many ran. Call it at least once a minute (`work` does).
+- `fun work()` — Looks at the clock every second and runs what is due, until the process is told to stop.
 
 # template.q
 
@@ -822,6 +1117,31 @@ A set of listeners, by the type of event.
 - `fun dispatch(event: E) -> int` — Tells the listeners of the type of `event`. Gives back how many were called.
 - `fun count() -> int` — How many listeners wait for events of type `E`.
 
+# web/health.q
+
+## `struct Health`
+
+The checks of the application.
+
+**Fields**
+
+- `checks: array<(string, fun() -> string?)>`
+
+**Methods**
+
+- `fun new() -> Health`
+- `fun check(name: string, run: fun() -> string?)`
+- `fun ready() -> (int, string)` — Runs the checks. Gives the status code and the JSON body.
+- `fun mount(app: App, path: string)` — Adds `path/live` and `path/ready`.
+
+## `fun db_check(db: Db) -> fun() -> string?`
+
+A check that runs `SELECT 1` on the database.
+
+## `fun redis_check(redis: Redis) -> fun() -> string?`
+
+A check that sends `PING` to Redis.
+
 # web/limit.q
 
 ## `fun by_header(name: string) -> fun(Request) -> string`
@@ -854,6 +1174,28 @@ A provider for `Lang` handler parameters: add it with `Reflect.callable(locale, 
 ## `fun use_locale(app: App, tr: Translator, available: array<string>)`
 
 Sets everything up: the translator and the `Lang` service in the container, and the middleware.
+
+# web/metrics.q
+
+## `struct Metrics`
+
+Request counters kept in a cache.
+
+**Fields**
+
+- `cache: Cache`
+- `routes: array<string>`
+- `methods: array<string>`
+- `buckets: array<int>` — Upper limits of the duration buckets, in milliseconds.
+- `queue: Queue?`
+
+**Methods**
+
+- `fun new(cache: Cache, app: App) -> Metrics` — Counters for the routes of `app` (read now).
+- `fun with_queue(queue: Queue) -> Metrics` — Adds the size of the job queue to the page.
+- `fun middleware() -> fun(Request, fun(Request) -> Response) -> Response` — Counts every request and its duration. Put it first (`app.use`) to also count what other middleware refuses.
+- `fun render() -> string` — The page in the Prometheus text format.
+- `fun mount(app: App, path: string, guard: fun(Request) -> Response?)` — Adds `GET path` that serves the page, behind `guard` (give one: metrics tell attackers how your site is used).
 
 # web/middleware.q
 

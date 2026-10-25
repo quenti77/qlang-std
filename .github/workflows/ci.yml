@@ -29,6 +29,8 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: qlang --version
       - run: qlang test
+      - name: The code is laid out (qlang fmt)
+        run: qlang fmt --check
       - name: The API page is up to date
         run: |
           qlang doc -o /tmp/API.md

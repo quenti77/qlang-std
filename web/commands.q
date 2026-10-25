@@ -21,6 +21,8 @@ app.main()
 | `queue:work` (`--once`, `--max-jobs N`, `--max-time S`, `--sleep MS`) | does the jobs of the queue, waiting for new ones unless `--once`; leaves cleanly on Ctrl-C or `kill` after the job it is doing | `Queue` (with its handlers) |
 | `queue:failed` | the jobs that gave up | `Queue` |
 | `queue:retry <id>` | puts a failed job back in the queue | `Queue` |
+| `schedule:run` | runs the scheduled tasks that are due this minute, once (for a system timer every minute) | `Schedule` |
+| `schedule:work` | looks at the clock every second and runs the tasks that are due, until told to stop | `Schedule` |
 | `locale:missing fr` | the keys of the default language that `fr` lacks (exit code `1` if any) | `Translator` |
 
 A command whose services the container lacks is reported by `Cli.validate()`, so only add the ones
@@ -31,6 +33,7 @@ import "../i18n.q" as i18n
 import "app.q" as web
 import "migrate.q" as mig
 import "../queue.q" as jobs
+import "../schedule.q" as sch
 
 --" The migrations of the application, as a service. --"
 struct Migrations
@@ -136,6 +139,18 @@ fun queue_retry(#[cli.Arg(description: "the id shown by queue:failed")] id: stri
   end
   console.line("job {id} is back in the queue")
   Result<int, Error>.Ok(0)
+end
+
+#[cli.Command("schedule:run", "Runs the scheduled tasks that are due this minute")]
+fun schedule_run(plan: sch.Schedule, console: cli.Console) -> int
+  console.line("{plan.run_due()} task(s) run")
+  0
+end
+
+#[cli.Command("schedule:work", "Runs the scheduled tasks as they come due")]
+fun schedule_work(plan: sch.Schedule) -> int
+  plan.work()
+  0
 end
 
 export Migrations

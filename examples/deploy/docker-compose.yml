@@ -1,0 +1,33 @@
+# docker compose -f examples/deploy/docker-compose.yml up --build
+# The same image runs three processes; Redis lets the workers of the web process share their counters.
+services:
+  web:
+    build: { context: ../.., dockerfile: examples/deploy/Dockerfile }
+    environment: &env
+      REDIS_URL: redis://redis:6379?tls=disable
+      DATABASE_URL: sqlite:///data/app.db
+      METRICS_TOKEN: change-me
+    volumes: [data:/data]
+    ports: ["8080:8080"]
+    depends_on: [redis]
+    stop_grace_period: 30s
+    restart: unless-stopped
+  worker:
+    build: { context: ../.., dockerfile: examples/deploy/Dockerfile }
+    command: ["qlang", "run", "examples/deploy/worker.q"]
+    environment: *env
+    volumes: [data:/data]
+    depends_on: [redis]
+    stop_grace_period: 60s     # a job in progress may finish after SIGTERM
+    restart: unless-stopped
+  scheduler:
+    build: { context: ../.., dockerfile: examples/deploy/Dockerfile }
+    command: ["qlang", "run", "examples/deploy/scheduler.q"]
+    environment: *env
+    depends_on: [redis]
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+volumes:
+  data:

@@ -1,0 +1,15 @@
+[Unit]
+Description=App queue worker
+After=network.target
+[Service]
+User=app
+WorkingDirectory=/srv/app
+EnvironmentFile=/etc/app.env
+ExecStart=/usr/local/bin/qlang run examples/deploy/worker.q
+# the worker finishes the job it is doing, then leaves
+KillSignal=SIGTERM
+TimeoutStopSec=120
+Restart=always
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target

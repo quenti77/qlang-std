@@ -1,6 +1,5 @@
 import "template.q" as template
 
-
 -- JSON for the tests: `<<` and `>>` stand for the braces, which a qlang string cannot hold bare
 fun data(text: string) -> Json
   assert_ok(Json.parse(text.replace("<<", "\{").replace(">>", "}")))
