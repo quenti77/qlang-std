@@ -440,6 +440,9 @@ impl App
   with each request (the user, a connection) comes in as a parameter of the method, like for a
   function. --"
   public fun controller<T>(self, instance: T)
+    if Reflect.type_name<T>().starts_with("array<") then
+      panic("App.controller takes one controller (an instance of a struct); for the functions of a module, use App.controllers(Reflect.callables(module))")
+    end
     let prefix = ""
     let info = Reflect.struct_info<T>()
     let tag = info.annotation("Controller")
@@ -705,6 +708,7 @@ impl App
       end
       if route.method == req.method or (route.method == "GET" and req.method == "HEAD") then
         req.params = found
+        req.attrs["route"] = Any.of(route.pattern)
         return route.run(req, self.container)
       end
       if not allowed.contains(route.method) then

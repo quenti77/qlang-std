@@ -4,6 +4,8 @@ import "commands.q" as commands
 import "../cli.q" as cli
 import "../i18n.q" as i18n
 import "../queue.q" as jobs
+import "../schedule.q" as sch
+import "cache.q" as cc
 import "test_blog.q" as blog
 import "test_blog_controllers.q" as controllers
 
@@ -32,6 +34,10 @@ fun build() -> cli.Cli
   queue.max_attempts = 1
   queue.handle<Ping>(fun(p: Ping) -> string? if p.ok then none else "refused" end end)
   program.container.set(queue)
+  let plan = sch.Schedule.new(cc.Cache.memory())
+  plan.clock = fun() -> int 1700000000000 end
+  plan.cron("always", "* * * * *", fun() -> string? none end)
+  program.container.set(plan)
   program.add(Reflect.callables(commands))
   program
 end
@@ -85,4 +91,10 @@ fun test_the_queue_commands_work_and_list_what_failed()
   assert_eq(run(program, ["queue:retry", "999"]).0, 1)
   let id = "{queue.failed().unwrap()[0].id}"
   assert(run(program, ["queue:retry", id]).1.contains("back in the queue"))
+end
+
+fun test_schedule_run_runs_the_tasks_that_are_due_once_per_minute()
+  let program = build()
+  assert(run(program, ["schedule:run"]).1.contains("1 task(s) run"))
+  assert(run(program, ["schedule:run"]).1.contains("0 task(s) run"))
 end

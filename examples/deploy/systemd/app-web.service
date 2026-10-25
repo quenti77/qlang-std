@@ -1,0 +1,17 @@
+[Unit]
+Description=App web process
+After=network.target
+[Service]
+User=app
+WorkingDirectory=/srv/app
+EnvironmentFile=/etc/app.env
+ExecStart=/usr/local/bin/qlang serve examples/deploy/main.q --port 8080 --workers 2 --compress
+# SIGTERM stops accepting and finishes the requests in progress
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/app/data
+[Install]
+WantedBy=multi-user.target
