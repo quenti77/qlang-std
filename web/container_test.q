@@ -1,5 +1,6 @@
 import "container.q" as web
 import "test_services.q" as s
+import "test_autowire.q" as aw
 
 fun good() -> web.Container
   let app = web.Container.new([])
@@ -86,4 +87,62 @@ fun test_a_singleton_may_not_hold_a_request_service()
   let app = web.Container.new(Reflect.callables(s))
   app.expects<s.Session>()
   assert(app.validate().contains("Lonely is a singleton but needs Session, which changes with every request"))
+end
+
+fun autowired() -> web.Container
+  let app = web.Container.new(Reflect.callables(aw))
+  app.services(Reflect.constructors(aw))
+  app.bind<aw.Mailer, aw.SmtpMailer>()
+  app
+end
+
+fun test_a_marked_structure_is_built_from_its_fields()
+  let app = autowired()
+  let notifier = app.get<aw.Notifier>().unwrap()
+  assert_eq(notifier.welcome("ana"), "smtp.example -> ana")
+end
+
+fun test_a_trait_is_bound_to_an_implementation()
+  let app = autowired()
+  let mailer = app.get<aw.Mailer>().unwrap()
+  assert_eq(mailer.send("bo"), "smtp.example -> bo")
+end
+
+fun test_a_structure_that_is_not_marked_is_not_a_service()
+  let app = autowired()
+  assert(app.get<aw.Plain>().is_err())
+  assert(not app.has<aw.Plain>())
+end
+
+fun test_a_marked_structure_may_be_scoped()
+  let app = autowired()
+  app.expects<aw.Visitor>()
+  assert(app.validate().is_empty())
+  let request = app.child()
+  request.set(aw.Visitor { name: "ada" })
+  assert_eq(request.get<aw.Greeter>().unwrap().hello(), "hello ada")
+  assert(app.get<aw.Greeter>().is_err())
+end
+
+fun test_services_of_keeps_only_the_marked_structures()
+  let marked = web.services_of(Reflect.constructors(aw))
+  let names = marked.map(fun(c: Callable) -> string c.name end)
+  names.sort()
+  assert_eq(names, ["Greeter", "Notifier", "SmtpMailer"])
+  let app = web.Container.new(Reflect.callables(aw).concat(marked))
+  assert(app.has<aw.Notifier>())
+end
+
+fun test_validate_sees_a_missing_field_service()
+  let app = web.Container.new([])
+  app.services(Reflect.constructors(aw))
+  let problems = app.validate()
+  assert(problems.len() > 0)
+  assert(problems.any(fun(p: string) -> bool p.contains("Config") end))
+end
+
+fun test_a_ready_value_feeds_the_services_built_from_fields()
+  let app = autowired()
+  app.set(aw.Config { host: "test.local" })
+  assert_eq(app.get<aw.Mailer>().unwrap().send("cy"), "test.local -> cy")
 end

@@ -10,6 +10,7 @@ import Config, Me, Users from "providers.q"
 
 fun build() -> web.App
   let app = web.App.new(Reflect.callables(providers))
+  app.services(Reflect.constructors(providers))
   let config = app.container.get<Config>().unwrap()
 
   app.use(mw.request_id())

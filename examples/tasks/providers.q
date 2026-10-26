@@ -39,12 +39,15 @@ impl TaskRow
   end
 end
 
+--" Services marked `#[di.Service]` are built from their fields: no provider to write. --"
+#[di.Service]
 struct Users
-  public db: Db
+  db: Db
 end
 
+#[di.Service]
 struct Tasks
-  public db: Db
+  db: Db
 end
 
 --" Who is making the request: filled in by the `auth` guard. --"
@@ -129,14 +132,6 @@ fun make_db(config: Config) -> Db
     },
   ]).unwrap()
   db
-end
-
-fun make_users(db: Db) -> Users
-  Users { db: db }
-end
-
-fun make_tasks(db: Db) -> Tasks
-  Tasks { db: db }
 end
 
 --" Built for each request from what the guard learned. --"
