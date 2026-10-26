@@ -945,6 +945,8 @@ The application.
 **Methods**
 
 - `fun new(providers: array<Callable>) -> App` — An application whose services come from these provider functions. Functions that carry a route annotation are handlers, not providers, and are left out.
+- `fun services(constructors: array<Callable>)` — Provides every structure marked `#[di.Service]` among these constructors (`Reflect.constructors(models)`): its fields are what it needs.
+- `fun bind()` — Says that whoever needs an `I` (a trait) gets the service `T`.
 - `fun guard(name: string, check: fun(Request) -> Response?)` — Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in `req.attrs`) and gives `none` to let it through or a response to stop there.
 - `fun route_list() -> array<RouteDef>` — The routes added so far, in order.
 - `fun use(m: fun(Request, fun(Request) -> Response) -> Response)` — Registers a middleware. The first one added is the outermost.
@@ -1068,6 +1070,17 @@ The migrations of the application, as a service.
 
 # web/container.q
 
+## `struct Service`
+
+Marks a structure as a service: the container builds it from its fields (see
+`Container.services`). `#[Scoped]` and `#[Transient]` go next to it.
+
+## `fun services_of(constructors: array<Callable>) -> array<Callable>`
+
+The constructors (`Reflect.constructors(module)`) of the structures marked `#[Service]`: add
+them to the providers of something that takes a list (`Cli.new(Reflect.callables(providers)
+.concat(services_of(Reflect.constructors(providers))))`).
+
 ## `struct Scoped`
 
 Marks a provider whose service is built once for each request (each `child` container).
@@ -1085,7 +1098,8 @@ A provider the container knows: the type it gives, how long the service lives, w
 - `key: string`
 - `lifetime: string`
 - `needs: array<string>`
-- `maker: Callable`
+- `maker: Callable?`
+- `alias: string` — When not empty: this service is the one called `alias` (see `bind`).
 
 ## `struct Container`
 
@@ -1095,6 +1109,8 @@ Services, built from providers.
 
 - `fun new(callables: array<Callable>) -> Container` — A container whose providers are the given functions (`Reflect.callables(module)`).
 - `fun provide(c: Callable)` — Adds a provider function (`Reflect.callable("name")`).
+- `fun services(constructors: array<Callable>)` — Provides every structure marked `#[Service]` among the constructors (`Reflect.constructors(module)`): its fields are its dependencies.
+- `fun bind()` — Says that the service `I` (usually a trait) is the service `T`: whoever needs an `I` gets the `T`. Tests bind the same `I` to another one.
 - `fun set(value: T)` — Puts a ready value in the container: it is the service of its type (a test double, a configuration read at start).
 - `fun expects()` — Says that services of this type will come from elsewhere (the request, set on each `child`): `validate` does not complain about them.
 - `fun child() -> Container` — A container for one request: it sees every service of this one, builds the `#[Scoped]` ones for itself, and takes what `set` puts in it.

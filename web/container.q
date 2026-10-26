@@ -18,7 +18,33 @@ let users = app.get<UserRepo>().unwrap()
 
 Lifetimes: a provider is a *singleton* (built once) unless it carries `#[Scoped]` (built once per
 request, see `child`) or `#[Transient]` (built every time).
+
+A structure can be a service without a provider: mark it `#[Service]` and its fields are what
+it needs, filled in by the container (private fields too):
+
+```
+#[Service]
+struct Users
+  db: Db
+end
+
+app.services(Reflect.constructors(models))   -- every `#[Service]` structure of `models`
+app.bind<Mailer, ResendMailer>()             -- `Mailer` is whatever `ResendMailer` is
+```
 --"
+
+--" Marks a structure as a service: the container builds it from its fields (see
+`Container.services`). `#[Scoped]` and `#[Transient]` go next to it. --"
+#[annotation]
+struct Service
+end
+
+--" The constructors (`Reflect.constructors(module)`) of the structures marked `#[Service]`: add
+them to the providers of something that takes a list (`Cli.new(Reflect.callables(providers)
+.concat(services_of(Reflect.constructors(providers))))`). --"
+fun services_of(constructors: array<Callable>) -> array<Callable>
+  constructors.filter(fun(c: Callable) -> bool c.annotation("Service") != none end)
+end
 
 --" Marks a provider whose service is built once for each request (each `child` container). --"
 #[annotation]
@@ -35,7 +61,9 @@ struct Provider
   public key: string
   public lifetime: string
   public needs: array<string>
-  public maker: Callable
+  public maker: Callable?
+  --" When not empty: this service is the one called `alias` (see `bind`). --"
+  public alias: string
 end
 
 --" Services, built from providers. --"
@@ -69,7 +97,7 @@ impl Container
       for p in c.params do
         needs.push(p.type_name)
       end
-      table[c.return_type] = Provider { key: c.return_type, lifetime: lifetime_of(c), needs: needs, maker: c }
+      table[c.return_type] = Provider { key: c.return_type, lifetime: lifetime_of(c), needs: needs, maker: c, alias: "" }
     end
     Container { providers: table, instances: {}, parent: none, external: [] }
   end
@@ -80,7 +108,31 @@ impl Container
     for p in c.params do
       needs.push(p.type_name)
     end
-    self.providers[c.return_type] = Provider { key: c.return_type, lifetime: lifetime_of(c), needs: needs, maker: c }
+    self.providers[c.return_type] = Provider { key: c.return_type, lifetime: lifetime_of(c), needs: needs, maker: c, alias: "" }
+  end
+
+  --" Provides every structure marked `#[Service]` among the constructors
+(`Reflect.constructors(module)`): its fields are its dependencies. --"
+  public fun services(self, constructors: array<Callable>)
+    for c in constructors do
+      if c.annotation("Service") != none then
+        self.provide(c)
+      end
+    end
+  end
+
+  --" Says that the service `I` (usually a trait) is the service `T`: whoever needs an `I` gets
+  the `T`. Tests bind the same `I` to another one. --"
+  public fun bind<I, T>(self)
+    let target = Reflect.type_name<T>()
+    let life = self.providers[target]
+    self.providers[Reflect.type_name<I>()] = Provider {
+      key: Reflect.type_name<I>(),
+      lifetime: if life == none then "singleton" else life.lifetime end,
+      needs: [target],
+      maker: none,
+      alias: target,
+    }
   end
 
   --" Puts a ready value in the container: it is the service of its type (a test double, a
@@ -164,6 +216,13 @@ impl Container
     if up == none and provider.lifetime == "scoped" then
       return container_error<Any>("{key} is scoped: ask a child container (one per request) for it")
     end
+    if provider.alias != "" then
+      return self.resolve(provider.alias, path.concat([key]))
+    end
+    let maker = provider.maker
+    if maker == none then
+      return container_error<Any>("{key} has no way to be built")
+    end
     let args: array<Any> = []
     let next = path.concat([key])
     for need in provider.needs do
@@ -173,7 +232,7 @@ impl Container
       end
       args.push(dep.unwrap())
     end
-    let built = provider.maker.call(args)
+    let built = maker.call(args)
     if built.is_err() then
       return container_error<Any>("{key}: {built.unwrap_err().message}")
     end
@@ -240,4 +299,4 @@ impl Container
   end
 end
 
-export Container, Provider, Scoped, Transient
+export Container, Provider, Scoped, Transient, Service, services_of

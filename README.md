@@ -64,7 +64,7 @@ import "@std/web/middleware.q" as mw
 
 | Module | Rôle |
 | --- | --- |
-| [`web/container.q`](web/container.q) | conteneur d'injection : une fonction qui rend un `T` *fournit* un `T`, ses paramètres sont ses besoins ; singleton, `#[Scoped]` (par requête), `#[Transient]` ; `validate()` trouve ce qui manque ou boucle avant la première requête |
+| [`web/container.q`](web/container.q) | conteneur d'injection : une fonction qui rend un `T` *fournit* un `T`, ses paramètres sont ses besoins ; singleton, `#[Scoped]` (par requête), `#[Transient]` ; une structure marquée `#[Service]` est construite **à partir de ses champs** (`app.services(Reflect.constructors(module))`, `app.bind<Interface, Implémentation>()`) ; `validate()` trouve ce qui manque ou boucle avant la première requête |
 | [`web/app.q`](web/app.q) | l'application : routes `#[web.Get("/users/:id")]`, paramètres remplis par `#[web.Path]`, `#[web.Query]`, `#[web.Body]` (JSON lu comme le type du paramètre, puis validé), `#[web.Header]`, `#[web.CookieValue]` ou par un service ; le résultat devient la réponse (JSON, `Result`, `HttpError`, `404` pour `none`) |
 | [`web/middleware.q`](web/middleware.q) | `logging`, `security_headers`, `cors` / `cors_with` (méthodes, en-têtes, identifiants), `bearer_token`, `request_id` |
 | [`web/validate.q`](web/validate.q) | règles en annotations sur les champs : `#[NotBlank]`, `#[Length(2, 40)]`, `#[Min(18)]`, `#[Email]`, `#[Pattern(...)]`, `#[OneOf([...])]`, `#[Valid]` (structures imbriquées) et les vôtres |

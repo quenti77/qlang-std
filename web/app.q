@@ -355,6 +355,17 @@ impl App
     App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {} }
   end
 
+  --" Provides every structure marked `#[di.Service]` among these constructors
+  (`Reflect.constructors(models)`): its fields are what it needs. --"
+  public fun services(self, constructors: array<Callable>)
+    self.container.services(constructors)
+  end
+
+  --" Says that whoever needs an `I` (a trait) gets the service `T`. --"
+  public fun bind<I, T>(self)
+    self.container.bind<I, T>()
+  end
+
   --" Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in
   `req.attrs`) and gives `none` to let it through or a response to stop there. --"
   public fun guard(self, name: string, check: GuardFn)
