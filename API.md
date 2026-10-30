@@ -1284,7 +1284,32 @@ The OpenAPI document of the routes of `app` (those made from functions or method
 
 Adds `GET path` that answers the document (written when the first request comes, so every route is in it).
 
+# web/policy.q
+
+## `struct Policy`
+
+The rules about one kind of item (`S`) for one kind of user (`U`).
+
 # web/query.q
+
+## `struct Page`
+
+One page of a listing: the rows of the page and what a client needs to ask for the others.
+
+**Fields**
+
+- `items: array<map<string, Json>>`
+- `page: int` — The number of this page (the first is 1).
+- `per_page: int`
+- `total: int` — How many rows match in all, whatever the page.
+- `pages: int` — How many pages there are (at least 1, even for an empty listing).
+
+**Methods**
+
+- `fun has_next() -> bool`
+- `fun has_prev() -> bool`
+- `fun to_json_with(path: string, shape: fun(map<string, Json>) -> Json) -> Json` — The page as the body of an API: `{"data": [...], "meta": {"page", "per_page", "total", "pages"}}`, and with `path` (`"/posts"`) the `links` to the first, last, previous and next pages (`null` when there is none). The rows go through `shape` (a resource, see `resource.q`) when you give one.
+- `fun to_json(path: string) -> Json` — The page as the body of an API, rows as they are.
 
 ## `struct Query`
 
@@ -1306,6 +1331,8 @@ A SELECT, INSERT, UPDATE or DELETE under construction.
 - `fun all(db: Db) -> Result<array<map<string, Json>>, Error>` — The rows, each as a map from column to value.
 - `fun first(db: Db) -> Result<map<string, Json>?, Error>` — The first row, or `none`.
 - `fun count(db: Db) -> Result<int, Error>` — How many rows match.
+- `fun paginate(db: Db, page: int, per_page: int) -> Result<Page, Error>` — One page of the rows: `page` counts from 1 (a number below 1 is the first page), `per_page` rows at most (below 1 is 1). The query keeps its own `limit` and `offset`: the page replaces them. The total comes from a `COUNT` with the same conditions.
+- `fun paginate_request(db: Db, req: Request, default_per_page: int, max_per_page: int) -> Result<Page, Error>` — The page the request asks for (`?page=2&per_page=50`): `per_page` is `default_per_page` when absent and never above `max_per_page`.
 - `fun all_as(db: Db) -> Result<array<T>, Error>` — The rows read as values of the type `T` (a structure with a field for each column; see `Json.to`).
 - `fun first_as(db: Db) -> Result<T?, Error>` — The first row read as a `T`, or `none`.
 - `fun insert(db: Db, row: map<string, Json>) -> Result<int, Error>` — Inserts a row: its columns and values. Gives the number of rows inserted.
@@ -1381,6 +1408,21 @@ The `O` row each child points to: the one whose `key` is the child's `foreign_ke
 ## `fun belongs_to_many(db: Db, parents: array<P>, key: string, pivot: string, parent_key: string, related_key: string, table: string, id: string) -> Result<array<With<P, array<R>>>, Error>`
 
 Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of the parent) and a `related_key` column (the `id` of the related row in `table`).
+
+# web/resource.q
+
+## `struct Resource`
+
+**Methods**
+
+- `fun only(fields: array<string>) -> Resource` — Shows only these fields, in this order (a name the row does not have is left out).
+- `fun hide(hidden: array<string>) -> Resource` — Shows every field except these.
+- `fun rename(field: string, name: string) -> Resource` — Shows the field `field` under the name `name`.
+- `fun add(name: string, make: fun(map<string, Json>) -> Json) -> Resource` — Adds a computed field: `make` receives the whole row (including the fields that are hidden).
+- `fun one(row: map<string, Json>) -> Json` — One row shown: a JSON object.
+- `fun many(rows: array<map<string, Json>>) -> Json` — Many rows shown: a JSON array.
+- `fun of_value(value: T) -> Json` — A structure shown (its fields as `Json.of` writes them, so `#[JsonSkip]` still applies).
+- `fun shape() -> fun(map<string, Json>) -> Json` — The resource as a function, for `Page.to_json_with`.
 
 # web/seed.q
 
