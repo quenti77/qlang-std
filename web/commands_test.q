@@ -1,6 +1,7 @@
 import "app.q" as web
 import "migrate.q" as mig
 import "commands.q" as commands
+import "seed.q" as seed
 import "../cli.q" as cli
 import "../i18n.q" as i18n
 import "../queue.q" as jobs
@@ -29,6 +30,14 @@ fun build() -> cli.Cli
     mig.Migration { id: "002_tags", up: ["CREATE TABLE tags (id INTEGER)"], down: ["DROP TABLE tags"] },
   ] })
   program.container.set(tr)
+  program.container.set(commands.Seeders { list: [
+    seed.Seeder { name: "posts", run: fun(d: Db) -> Result<bool, Error>
+      seed.done(d.execute("INSERT INTO posts (id) VALUES (1)", []))
+    end },
+    seed.Seeder { name: "tags", run: fun(d: Db) -> Result<bool, Error>
+      seed.done(d.execute("INSERT INTO tags (id) VALUES (7)", []))
+    end },
+  ] })
   let queue = jobs.Queue.new(db, "sqlite")
   queue.install().unwrap()
   queue.max_attempts = 1
@@ -97,4 +106,18 @@ fun test_schedule_run_runs_the_tasks_that_are_due_once_per_minute()
   let program = build()
   assert(run(program, ["schedule:run"]).1.contains("1 task(s) run"))
   assert(run(program, ["schedule:run"]).1.contains("0 task(s) run"))
+end
+
+fun test_seeders_fill_the_database_all_or_one_by_name()
+  let program = build()
+  run(program, ["db:migrate"])
+  let all = run(program, ["db:seed"])
+  assert_eq(all.0, 0)
+  assert(all.1.contains("Seeded posts") and all.1.contains("Seeded tags"))
+  let one = run(program, ["db:seed", "--only", "tags"])
+  assert_eq(one.0, 0)
+  assert(one.1.contains("Seeded tags") and not one.1.contains("Seeded posts"))
+  let unknown = run(program, ["db:seed", "--only", "nope"])
+  assert_eq(unknown.0, 1)
+  assert(unknown.2.contains("no seeder called nope"))
 end

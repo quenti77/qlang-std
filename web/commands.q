@@ -18,6 +18,7 @@ app.main()
 | `db:migrate` | applies the migrations that were not yet | `Migrator`, `Migrations` |
 | `db:rollback --steps 1` | undoes the last migrations | `Migrator`, `Migrations` |
 | `db:status` | which migrations are applied | `Migrator`, `Migrations` |
+| `db:seed` (`--only name`) | runs the seeders (`seed.q`), each in a transaction, in order | `Migrator` (its database), `Seeders` |
 | `queue:work` (`--once`, `--max-jobs N`, `--max-time S`, `--sleep MS`) | does the jobs of the queue, waiting for new ones unless `--once`; leaves cleanly on Ctrl-C or `kill` after the job it is doing | `Queue` (with its handlers) |
 | `queue:failed` | the jobs that gave up | `Queue` |
 | `queue:retry <id>` | puts a failed job back in the queue | `Queue` |
@@ -32,12 +33,18 @@ import "../cli.q" as cli
 import "../i18n.q" as i18n
 import "app.q" as web
 import "migrate.q" as mig
+import "seed.q" as seed
 import "../queue.q" as jobs
 import "../schedule.q" as sch
 
 --" The migrations of the application, as a service. --"
 struct Migrations
   public list: array<mig.Migration>
+end
+
+--" The seeders of the application, as a service (for `db:seed`). --"
+struct Seeders
+  public list: array<seed.Seeder>
 end
 
 #[cli.Command("routes:list", "Lists the routes")]
@@ -89,6 +96,26 @@ fun db_status(migrator: mig.Migrator, migrations: Migrations, console: cli.Conso
     rows.push([s.id, if s.applied then "applied" else "pending" end])
   end
   console.table(["migration", "state"], rows)
+  Result<int, Error>.Ok(0)
+end
+
+#[cli.Command("db:seed", "Fills the database with the seeders")]
+fun db_seed(migrator: mig.Migrator, seeders: Seeders, console: cli.Console, #[cli.Opt(description: "run only the seeder with this name")] only: string?) -> Result<int, Error>
+  let chosen = seeders.list
+  if only != none then
+    chosen = seeders.list.filter(fun(s: seed.Seeder) -> bool s.name == only end)
+    if chosen.is_empty() then
+      console.error("no seeder called {only}")
+      return Result<int, Error>.Ok(1)
+    end
+  end
+  let ran = seed.run_seeders(migrator.db, chosen)
+  if ran.is_err() then
+    return Result<int, Error>.Err(ran.unwrap_err())
+  end
+  for name in ran.unwrap() do
+    console.line("Seeded {name}")
+  end
   Result<int, Error>.Ok(0)
 end
 
@@ -153,4 +180,4 @@ fun schedule_work(plan: sch.Schedule) -> int
   0
 end
 
-export Migrations
+export Migrations, Seeders

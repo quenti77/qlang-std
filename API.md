@@ -1045,6 +1045,14 @@ The migrations of the application, as a service.
 
 - `list: array<Migration>`
 
+## `struct Seeders`
+
+The seeders of the application, as a service (for `db:seed`).
+
+**Fields**
+
+- `list: array<Seeder>`
+
 # web/container.q
 
 ## `struct Service`
@@ -1373,6 +1381,43 @@ The `O` row each child points to: the one whose `key` is the child's `foreign_ke
 ## `fun belongs_to_many(db: Db, parents: array<P>, key: string, pivot: string, parent_key: string, related_key: string, table: string, id: string) -> Result<array<With<P, array<R>>>, Error>`
 
 Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of the parent) and a `related_key` column (the `id` of the related row in `table`).
+
+# web/seed.q
+
+## `struct Factory`
+
+Builds rows of one table.
+
+**Methods**
+
+- `fun table(name: string) -> Factory` — A factory for this table.
+- `fun field(column: string, maker: fun(int) -> Json) -> Factory` — How to make the value of a column: `maker` receives the number of the row (1, 2, 3...). Giving the same column again replaces it.
+- `fun state(name: string, values: map<string, Json>) -> Factory` — A named variation: these values replace the ones of the fields.
+- `fun make_with(overrides: map<string, Json>) -> map<string, Json>` — The next row, not saved. `overrides` replace the values of the fields.
+- `fun make() -> map<string, Json>` — The next row, not saved.
+- `fun make_state(state: string, overrides: map<string, Json>) -> map<string, Json>` — The next row with a state applied (an unknown state is a panic: it is a typo in a test).
+- `fun make_many(n: int) -> array<map<string, Json>>` — `n` rows, not saved.
+- `fun create_with(db: Db, overrides: map<string, Json>) -> Result<map<string, Json>, Error>` — Makes a row and inserts it. It gives the row that was inserted, with the values it was made of (a column the database fills itself, like an automatic `id`, is not in it: give the factory a `field("id", ...)` to choose it, or read the table).
+- `fun create(db: Db) -> Result<map<string, Json>, Error>` — Makes a row and inserts it: the row.
+- `fun create_state(db: Db, state: string, overrides: map<string, Json>) -> Result<map<string, Json>, Error>` — Makes a row with a state and inserts it: the row.
+- `fun create_many(db: Db, n: int) -> Result<array<map<string, Json>>, Error>` — Inserts `n` rows and gives them, in order. It stops at the first error; wrap the call in a transaction (`db.begin()`) when all or none is wanted: `run_seeders` does it for each seeder.
+
+## `struct Seeder`
+
+A named function that fills a database.
+
+**Fields**
+
+- `name: string`
+- `run: fun(Db) -> Result<bool, Error>`
+
+## `fun done(result: Result<T, Error>) -> Result<bool, Error>`
+
+A seeder's way to say it worked: `done(users.create_many(db, 10))` is `Ok(true)`, or the error of the call it wraps.
+
+## `fun run_seeders(db: Db, seeders: array<Seeder>) -> Result<array<string>, Error>`
+
+Runs the seeders in order, each in a transaction (a failure undoes that one and stops there). The names of the ones that ran, or the error with the name of the one that failed.
 
 # web/session.q
 
