@@ -51,6 +51,9 @@ What it does not do: roles or per-row rights (the guard is all or nothing), an a
 (a foreign key is a number), files, or forms that are not made of text, numbers, booleans and long texts. For
 those, write your own page: this one is the quick way, not the last one.
 
+The row sent back after a creation is read as the one with the highest key, which is the new one unless another
+write lands at the same moment: for a table with heavy concurrent writes, read the row yourself.
+
 Booleans are stored as the integers `0` and `1`, which every database takes (a `BOOLEAN` column of PostgreSQL
 does not take an integer: use a `SMALLINT`).
 --"
