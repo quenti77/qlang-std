@@ -807,6 +807,75 @@ Like `render`, for plain texts only: `values` maps names to strings.
 
 Reads TOML text into a `Json` object. `err`, with the line, when the text is not valid TOML (or uses something this reader does not do: the dates stay text, and the keys are not checked for all the fine points of the format).
 
+# web/accounts.q
+
+## `struct Options`
+
+What the module needs to know about your application.
+
+**Fields**
+
+- `base_url: string` — The address of the site, for the links in the emails (no trailing `/`).
+- `sender: string` — Who the emails come from (`Name <address>`).
+- `app_name: string` — The name of the application, in the emails.
+- `reset_path: string` — The page of your site that takes the token of a forgotten password.
+- `verify_path: string` — The page of your site that takes the token of an email check.
+- `min_password: int` — The shortest password accepted.
+- `reset_ttl: int` — Seconds a forgotten-password link lives.
+- `verify_ttl: int` — Seconds an email-check link lives.
+- `require_verified: bool` — Refuse to sign in until the email is checked (`403`).
+- `table: string` — The table of the accounts; the tokens are in `{table}_tokens`.
+
+## `struct Account`
+
+An account, as it is sent out (never the hash of the password).
+
+**Fields**
+
+- `id: int`
+- `email: string`
+- `verified: bool`
+
+## `struct Accounts`
+
+The service: a database, a way to send email, and the options.
+
+**Fields**
+
+- `db: Db`
+- `dialect: string`
+- `mailer: Mailer`
+- `options: Options`
+- `now: fun() -> int` — The clock in milliseconds (replaced in tests).
+
+**Methods**
+
+- `fun new(db: Db, dialect: string, mailer: Mailer, options: Options) -> Accounts` — `dialect` is `"sqlite"`, `"postgres"` or `"mysql"` (it only matters when the tables are made).
+- `fun install() -> Result<bool, Error>` — Makes the tables if they do not exist.
+- `fun find(id: int) -> Account?` — The account with this id, or `none`.
+- `fun register(email: string, password: string) -> Result<Account, Problem>` — Makes an account and sends the verification email. `422` for an address or password that is not acceptable, `409` for an address that is taken.
+- `fun authenticate(email: string, password: string) -> Result<Account, Problem>` — Checks an address and a password. `401` for both mistakes alike, `403` when the email must be checked first (`Options.require_verified`).
+- `fun send_verification(account: Account)` — Sends the email that lets the account check its address.
+- `fun verify_email(token: string) -> Result<Account, Problem>` — Checks the address of the account the token was sent to. `400` for a token that is wrong, old or used.
+- `fun start_password_reset(email: string)` — Sends a reset link when the address has an account. It never says whether it has: the caller answers the same thing either way.
+- `fun reset_password(token: string, password: string) -> Result<Account, Problem>` — Sets a new password with the token of the email. The other reset links of the account stop working.
+
+## `fun account_of(req: Request, accounts: Accounts) -> Account?`
+
+The signed in account of this request, or `none`.
+
+## `fun mount(app: App, accounts: Accounts, prefix: string)`
+
+Adds the routes of the table above under `prefix` (`"/auth"`). The session middleware must be on.
+
+## `fun require_login(accounts: Accounts) -> fun(Request) -> Response?`
+
+A guard: the request must come from a signed in account (`401` otherwise). The account is kept for the route (`account_of`).
+
+## `fun require_verified(accounts: Accounts) -> fun(Request) -> Response?`
+
+A guard: signed in **and** with a checked email (`403` when the address is not checked yet).
+
 # web/app.q
 
 ## `struct Get`
