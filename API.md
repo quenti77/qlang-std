@@ -1400,7 +1400,7 @@ Builds rows of one table.
 - `fun create_with(db: Db, overrides: map<string, Json>) -> Result<map<string, Json>, Error>` — Makes a row and inserts it. It gives the row that was inserted, with the values it was made of (a column the database fills itself, like an automatic `id`, is not in it: give the factory a `field("id", ...)` to choose it, or read the table).
 - `fun create(db: Db) -> Result<map<string, Json>, Error>` — Makes a row and inserts it: the row.
 - `fun create_state(db: Db, state: string, overrides: map<string, Json>) -> Result<map<string, Json>, Error>` — Makes a row with a state and inserts it: the row.
-- `fun create_many(db: Db, n: int) -> Result<array<map<string, Json>>, Error>` — Inserts `n` rows and gives them, in order. It stops at the first error; wrap the call in a transaction (`db.begin()`) when all or none is wanted: `run_seeders` does it for each seeder.
+- `fun create_many(db: Db, n: int) -> Result<array<map<string, Json>>, Error>` — Inserts `n` rows and gives them, in order, all or none: in a transaction (a savepoint when one is already open, as in a seeder), so a row that fails undoes the ones before it.
 
 ## `struct Seeder`
 

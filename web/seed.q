@@ -137,18 +137,21 @@ impl Factory
     insert_row(self.table, db, self.make_state(state, overrides))
   end
 
-  --" Inserts `n` rows and gives them, in order. It stops at the first error; wrap the call in a
-  transaction (`db.begin()`) when all or none is wanted: `run_seeders` does it for each seeder. --"
+  --" Inserts `n` rows and gives them, in order, all or none: in a transaction (a savepoint when one is
+  already open, as in a seeder), so a row that fails undoes the ones before it. --"
   public fun create_many(self, db: Db, n: int) -> Result<array<map<string, Json>>, Error>
-    let rows: array<map<string, Json>> = []
-    for i in 0..n do
-      let made = self.create(db)
-      if made.is_err() then
-        return Result<array<map<string, Json>>, Error>.Err(made.unwrap_err())
+    let factory = self
+    db.transaction(fun() -> Result<array<map<string, Json>>, Error>
+      let rows: array<map<string, Json>> = []
+      for i in 0..n do
+        let made = factory.create(db)
+        if made.is_err() then
+          return Result<array<map<string, Json>>, Error>.Err(made.unwrap_err())
+        end
+        rows.push(made.unwrap())
       end
-      rows.push(made.unwrap())
-    end
-    Result<array<map<string, Json>>, Error>.Ok(rows)
+      Result<array<map<string, Json>>, Error>.Ok(rows)
+    end)
   end
 end
 
