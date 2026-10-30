@@ -27,7 +27,7 @@ fun logging() -> web.Middleware
       Log.error(line)
     else
       if res.status >= 400 then
-        Log.warn(line)
+        Log.warning(line)
       else
         Log.info(line)
       end

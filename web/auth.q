@@ -57,7 +57,7 @@ fun jwt_guard(keys: array<jwt.Key>, options: jwt.Options) -> web.GuardFn
     let text = header.substring(7, header.len()).trim()
     let checked = jwt.verify(text, keys, options)
     if checked.is_err() then
-      Log.warn("token refused: {checked.unwrap_err().message}")
+      Log.warning("token refused: {checked.unwrap_err().message}")
       return refuse(401, "Unauthorized", challenge("invalid_token", ""))
     end
     req.attrs["jwt"] = Any.of(checked.unwrap())
