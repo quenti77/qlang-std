@@ -78,6 +78,8 @@ import "@std/web/middleware.q" as mw
 | [`web/policy.q`](web/policy.q) | autorisations par règle : `Policy<User, Post>.create()`, `allow("update", fun(user, post) ...)`, `before` (l'administrateur), `can` / `authorize` (403) / `filter` ; une capacité non définie est refusée |
 | [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `post_form`, `post_multipart` (fichiers), `json<T>()`, `expect_status` |
 | [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
+| [`yaml.q`](yaml.q) | YAML (blocs, collections en ligne, `|` et `>`, commentaires, plusieurs documents) lu en `Json` et écrit (`dump`) ; sans ancres, alias ni étiquettes |
+| [`xml.q`](xml.q) | XML lu en arbre `XmlNode` et écrit (`to_text`, `write_pretty`), avec un XPath simple (`select`, `first`, `values` : `//item[@id='2']/text()`) ; les entités d'un `DOCTYPE` ne sont pas définies |
 | [`web/proxy.q`](web/proxy.q) | derrière un proxy inverse (TLS) : `is_https`, `client_ip`, `host`, `redirect_to_https()` |
 | [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`, `increment`) sur un `Store` : mémoire du worker, fichiers de la machine, base de données (`DbStore`) ou Redis |
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` ; avec `Cache.redis(...)` le compte est exact pour toutes les machines |

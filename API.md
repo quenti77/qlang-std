@@ -1864,3 +1864,58 @@ Brings what a feed holds to the connections of **this worker**, with one read pe
 
 A guard that only lets through the requests whose `Origin` is one of these (or that have none, which is the case of programs that are not browsers). Register it with `app.guard("origin", ...)` and put `#[web.Guard("origin")]` on the WebSocket route.
 
+# xml.q
+
+## `struct XmlNode`
+
+**Fields**
+
+- `name: string`
+- `attrs: map<string, string>`
+- `children: array<XmlNode>`
+- `text: string`
+
+**Methods**
+
+- `fun element(name: string) -> XmlNode` — A node without attributes, children or text.
+- `fun deep_text() -> string` — The text of the element and of all its descendants, in order of reading.
+- `fun child(name: string) -> XmlNode?` — The first child with this name.
+
+## `fun parse(text: string) -> Result<XmlNode, Error>`
+
+Reads an XML document and gives its root element. `err` says the line of what it cannot read.
+
+## `fun to_text(n: XmlNode) -> string`
+
+The tree as XML text on one line, with the escapes needed (`&amp;`, `&lt;`...). Text that sits between children is gathered where the first child begins, since a node keeps its text as one piece.
+
+## `fun write_pretty(n: XmlNode) -> string`
+
+Like `to_text`, one element per line, two spaces per level, with the `<?xml ...?>` line first.
+
+## `fun select(node: XmlNode, path: string) -> Result<array<XmlNode>, Error>`
+
+The elements a path leads to. `/feed/item` starts from the root element you give (its name is the first step); `item/title` starts below it; `//title` is every `title` below (and the node itself when the path is absolute). `err` for a path that is not valid.
+
+## `fun first(node: XmlNode, path: string) -> XmlNode?`
+
+The first element a path leads to, or `none`.
+
+## `fun values(node: XmlNode, path: string) -> Result<array<string>, Error>`
+
+The texts a path leads to: the attribute of `.../@id`, the text of `.../text()`, or, for a path to elements, their whole text (`deep_text`).
+
+# yaml.q
+
+## `fun parse(text: string) -> Result<Json, Error>`
+
+Reads a YAML document (the first one) into a `Json` value. `err` says the line of what it cannot read. An empty document is `null`.
+
+## `fun parse_all(text: string) -> Result<array<Json>, Error>`
+
+Reads every document of a stream (`---` between them).
+
+## `fun dump(v: Json) -> string`
+
+Writes a `Json` value as block-style YAML (two spaces per level), with the keys in their order. Texts are quoted only when they would be read as something else. Multi-line texts are written in double quotes with `\n`.
+
