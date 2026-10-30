@@ -16,6 +16,16 @@ fun login(req: Request) -> Response
 end
 ```
 
+Where the data lives is a choice: in the cookie (above), or on the server in any `cache.Store` (a SQL
+database with `cache.DbStore`, Redis with `cache.RedisStore`...), the cookie then only holds a random
+identifier, signed. No size limit, an immediate logout everywhere, and `regenerate()` really retires
+the old identifier:
+
+```
+let store = cache.DbStore.new(db, "sessions")      -- once: store.install()
+app.use(sessions_using(secret, Options { store: store, secure: true }))
+```
+
 `session_of(req)` gives the session of the request (an empty one for a new visitor). For a handler
 parameter `s: Session`, add `session_of` to the providers: `app.container.provide(Reflect.callable(sessions_module, "session_of"))`.
 Changes are written in the cookie of the response by the middleware.
@@ -26,12 +36,15 @@ token to the page with `session.csrf_token()`.
 --"
 import "app.q" as web
 import "container.q" as di
+import "cache.q" as cache
 
 --" The data of one visitor. --"
 struct Session
   public data: map<string, string>
   public changed: bool
   public fresh: bool
+  --" Set by `regenerate`: with a server-side store, the middleware then gives the data a new identifier. --"
+  public rotated: bool = false
 end
 
 impl Session
@@ -95,6 +108,7 @@ impl Session
   an identifier seen before cannot be used with the new session (session fixation). The CSRF token
   changes too. --"
   public fun regenerate(self)
+    self.rotated = true
     self.data.remove("_csrf")
     self.data["_sid"] = Crypto.token(12).unwrap()
     self.changed = true
@@ -200,6 +214,13 @@ struct Options
   public lifetime: int = 7200
   --" `Lax` (the default: not sent with requests another site starts, except links), `Strict` or `None`. --"
   public same_site: string = "Lax"
+  --" Where the data lives. `none` (the default): in the signed cookie itself (about 3 KB, shared by
+  nobody). A `cache.Store` (`cache.DbStore`, `cache.RedisStore`, ...): the cookie only carries a
+  random identifier, signed, and the data stays on the server: no size limit, can be ended from the
+  server, and shared by every worker (`cache.MemoryStore` is one per worker). --"
+  public store: cache.Store? = none
+  --" With a store, the keys start with this. --"
+  public prefix: string = "session:"
 end
 
 --" Loads the session from the cookie `qs` (signed with `secret`) and writes it back when it
@@ -218,8 +239,23 @@ end
 fun sessions_using(secret: string, options: Options) -> web.Middleware
   fun(req: Request, next: web.Handler) -> Response
     let now = time.now()
+    let store = options.store
     let cookie = req.cookies["qs"]
-    let loaded = if cookie == none then none else decode(secret, cookie) end
+    -- the identifier of the stored data (server-side mode only), once the signature is checked
+    let id: string? = none
+    let loaded: map<string, string>? = none
+    if store == none then
+      loaded = if cookie == none then none else decode(secret, cookie) end
+    else
+      id = if cookie == none then none else signed_id(secret, cookie) end
+      if id != none then
+        let text = store.read(options.prefix + id)
+        loaded = if text == none then none else parse_data(text) end
+        if loaded == none then
+          id = none
+        end
+      end
+    end
     let data: map<string, string> = if loaded == none then {} else loaded end
     let stamp = int.parse(data["_exp"] ?? "")
     -- a cookie older than its expiry is a stranger; one without expiry (from before) is stamped now
@@ -245,6 +281,9 @@ fun sessions_using(secret: string, options: Options) -> web.Middleware
     if not s.data.is_empty() and renew then
       s.changed = true
     end
+    if store != none then
+      return save_stored(res, s, store, options, id, secret, now)
+    end
     if s.changed and not s.data.is_empty() then
       s.data["_exp"] = "{now + options.lifetime * 1000}"
       let value = encode(secret, s.data)
@@ -261,6 +300,67 @@ fun sessions_using(secret: string, options: Options) -> web.Middleware
     end
     res
   end
+end
+
+-- `id.signature` for the cookie of a server-side session
+fun signed_cookie(secret: string, id: string) -> string
+  "{id}.{sign(secret, id)}"
+end
+
+-- the identifier of a cookie made by `signed_cookie`, or none when the signature is wrong
+fun signed_id(secret: string, cookie: string) -> string?
+  let dot = cookie.last_index_of(".")
+  if dot == none then
+    return none
+  end
+  let id = cookie.substring(0, dot)
+  if id.is_empty() or not Crypto.equal(cookie.substring(dot + 1, cookie.len()), sign(secret, id)) then
+    return none
+  end
+  id
+end
+
+fun parse_data(text: string) -> map<string, string>?
+  let json = Json.parse(text)
+  if json.is_err() then
+    return none
+  end
+  let read = Json.to<map<string, string>>(json.unwrap())
+  if read.is_err() then
+    return none
+  end
+  read.unwrap()
+end
+
+-- writes (or forgets) the data in the store and the cookie of the response
+fun save_stored(res: Response, s: Session, store: cache.Store, options: Options, known: string?, secret: string, now: int) -> Response
+  let id = known
+  if s.rotated and id != none then
+    -- a new identifier for the same data: the old one must stop working
+    store.drop(options.prefix + id)
+    id = none
+  end
+  if s.changed and not s.data.is_empty() then
+    if id == none then
+      let made = Crypto.token(24)
+      if made.is_err() then
+        Log.error("the session could not be saved: no secure randomness")
+        return res
+      end
+      id = made.unwrap()
+    end
+    s.data["_exp"] = "{now + options.lifetime * 1000}"
+    store.write(options.prefix + (id ?? ""), Json.of(s.data).to_text(), options.lifetime)
+    res.cookies.push(Cookie { name: "qs", value: signed_cookie(secret, id ?? ""), secure: options.secure, same_site: options.same_site, max_age: options.lifetime })
+  else
+    if s.changed then
+      if id != none then
+        store.drop(options.prefix + id)
+      end
+      res.cookies.push(Cookie { name: "qs", value: "", secure: options.secure, same_site: options.same_site, max_age: 0 })
+    end
+  end
+  res
 end
 
 --" Refuses the unsafe requests that do not carry the token of the session. --"

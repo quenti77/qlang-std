@@ -17,6 +17,7 @@ Where the texts live is a `Store`:
 | `MemoryStore` (`Cache.memory()`) | the requests of one worker | the worker stops |
 | `FileStore` (`Cache.files("/tmp/cache")`) | every worker of the machine | the lifetime ends (a file per key) |
 | `RedisStore` (`Cache.redis(redis, "app:")`) | every worker of every machine | the lifetime ends (Redis expires the key) |
+| `DbStore` (`Cache.database(db, "cache")`) | every worker of every machine using the database | the lifetime ends (a row per key; `prune()` removes the old ones) |
 
 Each worker of `qlang serve` has its own memory, so a memory cache is a per-worker one: use a
 `FileStore` when every worker of one machine must see the same value, a `RedisStore` when several
@@ -186,6 +187,91 @@ impl Store for RedisStore
   end
 end
 
+--" A store in a SQL database (SQLite, PostgreSQL, MySQL): one row per key in `table`, shared by
+every worker of every machine that uses the database. Call `install()` once (a migration, or at start
+up) to make the table. Writing replaces the row; a counter (`incr`) is read then written, so it is
+not exact when two workers increase it at the same moment: use Redis for a limit that must be. --"
+struct DbStore
+  public db: Db
+  public table: string
+end
+
+fun db_number(n: int) -> Json
+  Json.number(n as float)
+end
+
+impl DbStore
+  public fun new(db: Db, table: string) -> DbStore
+    DbStore { db: db, table: table }
+  end
+
+  --" Makes the table if it does not exist. --"
+  public fun install(self) -> Result<bool, Error>
+    let made = self.db.execute("CREATE TABLE IF NOT EXISTS {self.table} (k VARCHAR(190) PRIMARY KEY, v TEXT NOT NULL, expires_at BIGINT NOT NULL)", [])
+    if made.is_err() then
+      return Result<bool, Error>.Err(made.unwrap_err())
+    end
+    Result<bool, Error>.Ok(true)
+  end
+
+  --" Removes the rows that expired; how many. --"
+  public fun prune(self) -> Result<int, Error>
+    self.db.execute("DELETE FROM {self.table} WHERE expires_at <= ?", [db_number(time.now())])
+  end
+end
+
+impl Store for DbStore
+  public fun read(self, key: string) -> string?
+    let rows = self.db.query("SELECT v FROM {self.table} WHERE k = ? AND expires_at > ?", [Json.string(key), db_number(time.now())])
+    if rows.is_err() then
+      Log.error("cache: {rows.unwrap_err().message}")
+      return none
+    end
+    let found = rows.unwrap()
+    if found.is_empty() then
+      return none
+    end
+    found[0].get("v", Json.null()).as_string()
+  end
+
+  public fun write(self, key: string, value: string, ttl: int)
+    let r = self.db.transaction(fun() -> Result<bool, Error>
+      let gone = self.db.execute("DELETE FROM {self.table} WHERE k = ?", [Json.string(key)])
+      if gone.is_err() then
+        return Result<bool, Error>.Err(gone.unwrap_err())
+      end
+      let saved = self.db.execute("INSERT INTO {self.table} (k, v, expires_at) VALUES (?, ?, ?)", [Json.string(key), Json.string(value), db_number(time.now() + ttl * 1000)])
+      if saved.is_err() then
+        return Result<bool, Error>.Err(saved.unwrap_err())
+      end
+      Result<bool, Error>.Ok(true)
+    end)
+    if r.is_err() then
+      Log.error("cache: {r.unwrap_err().message}")
+    end
+  end
+
+  public fun drop(self, key: string)
+    let r = self.db.execute("DELETE FROM {self.table} WHERE k = ?", [Json.string(key)])
+    if r.is_err() then
+      Log.error("cache: {r.unwrap_err().message}")
+    end
+  end
+
+  public fun incr(self, key: string, ttl: int) -> int
+    let n = (int.parse(self.read(key) ?? "0") ?? 0) + 1
+    if n == 1 then
+      self.write(key, "1", ttl)
+    else
+      let r = self.db.execute("UPDATE {self.table} SET v = ? WHERE k = ?", [Json.string("{n}"), Json.string(key)])
+      if r.is_err() then
+        Log.error("cache: {r.unwrap_err().message}")
+      end
+    end
+    n
+  end
+end
+
 --" A cache over a store. --"
 struct Cache
   store: Store
@@ -205,6 +291,11 @@ impl Cache
   --" A cache in Redis (shared by every worker of every machine); keys start with `prefix`. --"
   public fun redis(redis: Redis, prefix: string) -> Cache
     Cache.new(RedisStore.new(redis, prefix))
+  end
+
+  --" A cache in a SQL database, in `table` (made by `DbStore.new(db, table).install()`). --"
+  public fun database(db: Db, table: string) -> Cache
+    Cache.new(DbStore.new(db, table))
   end
 
   --" Adds 1 to a counter and gives the new value; a new counter lives `ttl` seconds. Atomic in
@@ -276,4 +367,4 @@ impl Cache
   end
 end
 
-export Store, MemoryStore, FileStore, RedisStore, Cache
+export Store, MemoryStore, FileStore, RedisStore, DbStore, Cache

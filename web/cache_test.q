@@ -83,3 +83,34 @@ fun test_redis_shares_values_and_counts_exactly()
   assert_eq(two.increment("hits", 60), 2)
   assert_eq(one.increment("hits", 60), 3)
 end
+
+fun db_cache() -> c.Cache
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let store = c.DbStore.new(db, "cache_entries")
+  store.install().unwrap()
+  c.Cache.new(store)
+end
+
+fun test_a_database_cache_keeps_values_until_they_expire()
+  let c = db_cache()
+  c.put("answer", 42, 300)
+  assert_eq(c.get<int>("answer"), 42)
+  c.put("answer", 43, 300)
+  assert_eq(c.get<int>("answer"), 43)
+  c.forget("answer")
+  assert_eq(c.get<int>("answer"), none)
+  c.put_text("short", "x", 0)
+  assert_eq(c.get_text("short"), none)
+end
+
+fun test_a_database_cache_counts_and_prunes()
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let store = c.DbStore.new(db, "cache_entries")
+  store.install().unwrap()
+  let c = c.Cache.new(store)
+  assert_eq(c.increment("hits", 60), 1)
+  assert_eq(c.increment("hits", 60), 2)
+  c.put_text("old", "x", 0)
+  assert_eq(store.prune().unwrap(), 1)
+  assert_eq(c.increment("hits", 60), 3)
+end
