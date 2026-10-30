@@ -209,3 +209,17 @@ fun test_a_form_body_works_like_json_and_resending_is_for_the_signed_in()
   client.post("/auth/email/resend", "").expect_status(202)
   assert_eq(w.mailer.sent.len(), 2)
 end
+
+fun test_each_account_gets_its_own_identifier_and_its_own_verification()
+  let w = world(acc.Options {})
+  let client = testing.Client.new(w.app)
+  let ada = Json.parse(client.post_json("/auth/register", credentials("ada@example.org", "correct horse")).body).unwrap()
+  let bob = Json.parse(client.post_json("/auth/register", credentials("bob@example.org", "correct horse")).body).unwrap()
+  assert(assert_some(ada.get("id")).as_number() != assert_some(bob.get("id")).as_number())
+  -- the link sent to bob checks bob, not the first account
+  let verified = client.post_json("/auth/email/verify", {"token": token_in(w.mailer.sent[1])})
+  verified.expect_status(200)
+  verified.expect_body_contains("bob@example.org")
+  assert_eq(assert_some(w.accounts.find(assert_some(bob.get("id")).as_number() as int)).verified, true)
+  assert_eq(assert_some(w.accounts.find(assert_some(ada.get("id")).as_number() as int)).verified, false)
+end

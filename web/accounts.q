@@ -182,16 +182,22 @@ impl Accounts
       Log.error("accounts: {hashed.unwrap_err().message}")
       return problem<Account>(500, "the account could not be made")
     end
-    let id = q.Query.table(self.options.table).insert(self.db, {
+    let made = q.Query.table(self.options.table).insert(self.db, {
       "email": Json.string(address),
       "password_hash": Json.string(hashed.unwrap()),
       "created_at": number(self.now()),
     })
-    if id.is_err() then
-      Log.error("accounts: {id.unwrap_err().message}")
+    if made.is_err() then
+      Log.error("accounts: {made.unwrap_err().message}")
       return problem<Account>(409, "this email address is already registered")
     end
-    let account = Account { id: id.unwrap(), email: address, verified: false }
+    -- `insert` gives the number of rows written, not the identifier: read the account back
+    let row = self.row_of("email = ?", [Json.string(address)])
+    if row == none then
+      Log.error("accounts: the account just made cannot be read")
+      return problem<Account>(500, "the account could not be made")
+    end
+    let account = self.account_of_row(row)
     self.send_verification(account)
     Result<Account, web.Problem>.Ok(account)
   end
