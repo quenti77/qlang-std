@@ -876,6 +876,57 @@ A guard: the request must come from a signed in account (`401` otherwise). The a
 
 A guard: signed in **and** with a checked email (`403` when the address is not checked yet).
 
+# web/admin.q
+
+## `struct Column`
+
+A column of a table. `kind` is `text`, `textarea`, `number` or `bool`.
+
+**Fields**
+
+- `name: string`
+- `label: string` — The title in the table (the name by default).
+- `kind: string`
+- `editable: bool` — Can the form change it?
+- `searchable: bool` — Does `?q=` look in it?
+- `required: bool` — The form refuses an empty value.
+
+## `struct Resource`
+
+A table of the panel. The key column (`id`) is shown and never changed.
+
+**Fields**
+
+- `name: string` — The name in the addresses (`users`): letters, digits, `_` and `-`; not `api`.
+- `table: string`
+- `title: string`
+- `columns: array<Column>`
+- `key: string`
+- `per_page: int`
+- `can_create: bool`
+- `can_edit: bool`
+- `can_delete: bool`
+
+## `struct Admin`
+
+The panel: a database and the resources it shows.
+
+**Fields**
+
+- `db: Db`
+- `title: string`
+- `resources: array<Resource>`
+- `csrf: bool` — Ask for the CSRF token on `POST`, `PUT` and `DELETE`.
+
+**Methods**
+
+- `fun new(db: Db, title: string, resources: array<Resource>) -> Admin`
+- `fun find(name: string) -> Resource?`
+
+## `fun mount(app: App, admin: Admin, prefix: string, guard: fun(Request) -> Response?)`
+
+Adds the pages and the API of the table above under `prefix` (`"/admin"`), behind `guard`. The session middleware must be on. Panics at once if a resource is badly declared.
+
 # web/app.q
 
 ## `struct Get`
