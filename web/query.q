@@ -18,6 +18,18 @@ Every method that adds something to the query returns the query itself, so calls
 on one line: `Query.table("users").where("id", "=", 3).first(db)`.
 --"
 
+--" One page of a listing: the rows of the page and what a client needs to ask for the others. --"
+struct Page
+  public items: array<map<string, Json>>
+  --" The number of this page (the first is 1). --"
+  public page: int
+  public per_page: int
+  --" How many rows match in all, whatever the page. --"
+  public total: int
+  --" How many pages there are (at least 1, even for an empty listing). --"
+  public pages: int
+end
+
 --" A SELECT, INSERT, UPDATE or DELETE under construction. --"
 struct Query
   name: string
@@ -36,6 +48,46 @@ end
 
 fun query_error<T>(message: string) -> Result<T, Error>
   Result<T, Error>.Err(Error { message: message })
+end
+
+impl Page
+  public fun has_next(self) -> bool
+    self.page < self.pages
+  end
+
+  public fun has_prev(self) -> bool
+    self.page > 1
+  end
+
+  --" The page as the body of an API: `{"data": [...], "meta": {"page", "per_page", "total", "pages"}}`,
+  and with `path` (`"/posts"`) the `links` to the first, last, previous and next pages (`null` when there
+  is none). The rows go through `shape` (a resource, see `resource.q`) when you give one. --"
+  public fun to_json_with(self, path: string, shape: fun(map<string, Json>) -> Json) -> Json
+    let data: array<Json> = []
+    for row in self.items do
+      data.push(shape(row))
+    end
+    let meta = Json.object({"page": Json.number(self.page as float), "per_page": Json.number(self.per_page as float), "total": Json.number(self.total as float), "pages": Json.number(self.pages as float)})
+    let body: map<string, Json> = {"data": Json.array(data), "meta": meta}
+    if path != "" then
+      let sep = if path.contains("?") then "&" else "?" end
+      let base = "{path}{sep}per_page={self.per_page}&page="
+      let links: map<string, Json> = {"first": Json.string(base + "1"), "last": Json.string(base + "{self.pages}"), "prev": Json.null(), "next": Json.null()}
+      if self.has_prev() then
+        links["prev"] = Json.string(base + "{self.page - 1}")
+      end
+      if self.has_next() then
+        links["next"] = Json.string(base + "{self.page + 1}")
+      end
+      body["links"] = Json.object(links)
+    end
+    Json.object(body)
+  end
+
+  --" The page as the body of an API, rows as they are. --"
+  public fun to_json(self, path: string) -> Json
+    self.to_json_with(path, fun(row: map<string, Json>) -> Json Json.object(row) end)
+  end
 end
 
 impl Query
@@ -205,6 +257,35 @@ impl Query
     Result<int, Error>.Ok(n.as_number() as int)
   end
 
+  --" One page of the rows: `page` counts from 1 (a number below 1 is the first page), `per_page` rows
+  at most (below 1 is 1). The query keeps its own `limit` and `offset`: the page replaces them. The total
+  comes from a `COUNT` with the same conditions. --"
+  public fun paginate(self, db: Db, page: int, per_page: int) -> Result<Page, Error>
+    let number = if page < 1 then 1 else page end
+    let size = if per_page < 1 then 1 else per_page end
+    let total = self.count(db)
+    if total.is_err() then
+      return Result<Page, Error>.Err(total.unwrap_err())
+    end
+    let window = Query { name: self.name, fields: self.fields, conditions: self.conditions, values: self.values, orders: self.orders, max: size, skip: (number - 1) * size, problem: self.problem }
+    let rows = window.all(db)
+    if rows.is_err() then
+      return Result<Page, Error>.Err(rows.unwrap_err())
+    end
+    let n = total.unwrap()
+    let pages = if n == 0 then 1 else ((n + size - 1) / size) as int end
+    Result<Page, Error>.Ok(Page { items: rows.unwrap(), page: number, per_page: size, total: n, pages: pages })
+  end
+
+  --" The page the request asks for (`?page=2&per_page=50`): `per_page` is `default_per_page` when
+  absent and never above `max_per_page`. --"
+  public fun paginate_request(self, db: Db, req: Request, default_per_page: int, max_per_page: int) -> Result<Page, Error>
+    let asked_page = int.parse(req.query["page"] ?? "1") ?? 1
+    let asked_size = int.parse(req.query["per_page"] ?? "") ?? default_per_page
+    let size = if asked_size > max_per_page then max_per_page else asked_size end
+    self.paginate(db, asked_page, size)
+  end
+
   --" The rows read as values of the type `T` (a structure with a field for each column; see
   `Json.to`). --"
   public fun all_as<T>(self, db: Db) -> Result<array<T>, Error>
@@ -313,4 +394,4 @@ impl Query
   end
 end
 
-export Query
+export Query, Page
