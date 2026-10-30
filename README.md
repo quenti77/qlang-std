@@ -80,6 +80,7 @@ import "@std/web/middleware.q" as mw
 | [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
 | [`yaml.q`](yaml.q) | YAML (blocs, collections en ligne, `|` et `>`, commentaires, plusieurs documents) lu en `Json` et écrit (`dump`) ; sans ancres, alias ni étiquettes |
 | [`xml.q`](xml.q) | XML lu en arbre `XmlNode` et écrit (`to_text`, `write_pretty`), avec un XPath simple (`select`, `first`, `values` : `//item[@id='2']/text()`) ; les entités d'un `DOCTYPE` ne sont pas définies |
+| [`web/accounts.q`](web/accounts.q) | le parcours d'un utilisateur, monté en une ligne : inscription, connexion/déconnexion (session), mot de passe oublié par courriel, vérification du courriel, gardes `require_login` / `require_verified` ; Argon2, jetons à usage unique dont seul le hachage est gardé, même réponse pour un courriel inconnu ou un mauvais mot de passe |
 | [`web/proxy.q`](web/proxy.q) | derrière un proxy inverse (TLS) : `is_https`, `client_ip`, `host`, `redirect_to_https()` |
 | [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`, `increment`) sur un `Store` : mémoire du worker, fichiers de la machine, base de données (`DbStore`) ou Redis |
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` ; avec `Cache.redis(...)` le compte est exact pour toutes les machines |
