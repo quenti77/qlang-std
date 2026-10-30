@@ -198,7 +198,7 @@ impl Notifier
       let r = c.deliver(to, n)
       if r.is_err() then
         failures.push("{name}: {r.unwrap_err().message}")
-        Log.warn("notification on {name} failed: {r.unwrap_err().message}")
+        Log.warning("notification on {name} failed: {r.unwrap_err().message}")
       end
     end
     failures

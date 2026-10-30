@@ -1,4 +1,4 @@
 [package]
 name = "std"
-version = "0.17.0"
+version = "0.17.1"
 main = "csv.q"

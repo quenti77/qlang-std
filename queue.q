@@ -1022,7 +1022,7 @@ impl Queue
       end
       return Result<bool, Error>.Ok(true)
     end
-    Log.warn("job {job.id} ({job.kind}) failed, attempt {job.attempts}: {outcome.why}")
+    Log.warning("job {job.id} ({job.kind}) failed, attempt {job.attempts}: {outcome.why}")
     let s = self.settings[job.kind]
     let tries = if s != none and s.tries > 0 then s.tries else self.max_attempts end
     if job.attempts >= tries then
