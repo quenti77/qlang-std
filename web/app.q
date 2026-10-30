@@ -30,6 +30,10 @@ else as JSON; `none` as `404`; no value as `204`. A `Result` gives its `Ok` the 
 `Err` as an error (`HttpError`, `Problem`, or an `Error`, which is a `500` whose details go to the
 log, not to the client).
 
+Nothing to list by hand: `App.boot(Reflect.declared(providers).concat(Reflect.declared(controllers)))`
+reads what the modules declare (provider functions, `#[di.Service]` structures, route functions and
+`#[Controller]` structures) and stops with the list of mistakes of wiring if there are any.
+
 ```
 let app = App.new(Reflect.callables(providers))
 app.controllers(Reflect.callables(controllers))
@@ -343,6 +347,8 @@ struct App
   wiring: array<string>
   check_bodies: bool
   guards: map<string, GuardFn>
+  declared: array<string>
+  registered: array<string>
 end
 
 impl App
@@ -352,7 +358,7 @@ impl App
     let services = providers.filter(fun(c: Callable) -> bool method_of(c) == none end)
     let c = di.Container.new(services)
     c.expects<Request>()
-    App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {} }
+    App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {}, declared: [], registered: [] }
   end
 
   --" Provides every structure marked `#[di.Service]` among these constructors
@@ -469,7 +475,12 @@ impl App
         inherited.push(a.get_string("name") ?? "")
       end
     end
-    for c in Reflect.bound_callables<T>(instance) do
+    self.registered.push(Reflect.type_name<T>())
+    self.routes_of(Reflect.bound_callables<T>(instance), prefix, inherited)
+  end
+
+  fun routes_of(self, methods: array<Callable>, prefix: string, inherited: array<string>)
+    for c in methods do
       let found = method_of(c)
       if found == none then
         continue
@@ -479,8 +490,80 @@ impl App
     end
   end
 
+  --" Registers what a module declares (`Reflect.declared(module)`): its functions with a route
+  annotation, and every structure marked `#[Controller]`, which the container builds from its
+  fields (like a `#[di.Service]`) and whose public methods with a route annotation become
+  routes. Nothing to list by hand: a controller added to the module is found. --"
+  public fun discover(self, declared: array<Callable>)
+    self.controllers(declared.filter(fun(c: Callable) -> bool method_of(c) != none end))
+    for k in declared do
+      if k.annotation("Controller") == none or k.name != k.return_type then
+        continue
+      end
+      if self.container.has_key(k.return_type) == false then
+        self.container.provide(k)
+      end
+      self.registered.push(k.return_type)
+      let made = self.container.resolve(k.return_type, [])
+      if made.is_err() then
+        self.wiring.push("controller {k.return_type}: {made.unwrap_err().message}")
+        continue
+      end
+      let prefix = ""
+      let tag = k.annotation("Controller")
+      if tag != none then
+        prefix = tag.get_string("prefix") ?? ""
+      end
+      let inherited: array<string> = []
+      for a in k.annotations do
+        if a.name == "Guard" then
+          inherited.push(a.get_string("name") ?? "")
+        end
+      end
+      self.routes_of(Reflect.bound_callables_of(made.unwrap()), prefix, inherited)
+    end
+  end
+
+  --" Says which structures are controllers (`Reflect.declared(module)`): `validate` reports each
+  one that was never registered, with `controller`, `controller_from_container` or `discover`,
+  instead of leaving a silent `404`. --"
+  public fun declare(self, declared: array<Callable>)
+    for k in declared do
+      if k.annotation("Controller") != none and k.name == k.return_type then
+        self.declared.push(k.return_type)
+      end
+    end
+  end
+
+  --" An application from everything the modules of the project declare, in one call
+  (`App.boot(Reflect.declared(providers).concat(Reflect.declared(controllers)))`): the functions
+  without a route are providers, the structures marked `#[di.Service]` are services (the other
+  structures are plain data), the functions
+  with a route annotation and the structures marked `#[Controller]` are the routes. It panics with
+  the list of mistakes of wiring if there are any (`validate`), so the application does not start
+  half built; `assemble` is the same without that check. --"
+  public fun boot(declared: array<Callable>) -> App
+    let app = App.assemble(declared)
+    let problems = app.validate()
+    if not problems.is_empty() then
+      panic("the application is not wired correctly:\n  " + problems.join("\n  "))
+    end
+    app
+  end
+
+  --" Like `boot`, without checking the wiring (tests that add services afterwards). --"
+  public fun assemble(declared: array<Callable>) -> App
+    -- a structure's constructor is named like the structure; a provider function is not
+    let app = App.new(declared.filter(fun(c: Callable) -> bool c.name != c.return_type end))
+    app.container.services(declared)
+    app.declare(declared)
+    app.discover(declared)
+    app
+  end
+
   --" Like `controller`, with the instance taken from the container (a provider returns `T`). --"
   public fun controller_from_container<T>(self)
+    self.registered.push(Reflect.type_name<T>())
     let made = self.container.get<T>()
     if made.is_err() then
       self.wiring.push("controller {Reflect.type_name<T>()}: {made.unwrap_err().message}")
@@ -682,6 +765,11 @@ impl App
     end
     for p in self.container.validate() do
       problems.push(p)
+    end
+    for d in self.declared do
+      if not self.registered.contains(d) then
+        problems.push("controller {d} is declared but never registered: its routes answer 404")
+      end
     end
     let i = 0
     for route in self.routes do

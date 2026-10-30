@@ -16,6 +16,14 @@ client.post_json("/posts", NewPost { title: "Hello" }).expect_status(201)
 --"
 import "app.q" as web
 
+--" A file to send with `Client.post_multipart`. --"
+struct TestFile
+  public field: string
+  public filename: string
+  public content_type: string
+  public data: bytes
+end
+
 --" What the application answered. --"
 struct Reply
   public status: int
@@ -117,6 +125,25 @@ impl Client
     end
     let sent = self.build("POST", path, pairs.join("&"))
     sent.headers["content-type"] = "application/x-www-form-urlencoded"
+    self.deliver(sent)
+  end
+
+  --" `POST` of a `multipart/form-data` form: text fields and files. --"
+  public fun post_multipart(self, path: string, fields: map<string, string>, files: array<TestFile>) -> Reply
+    let boundary = "----qlangtestboundary"
+    let body = "".to_bytes()
+    for name in fields.keys() do
+      let head = "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{fields[name] ?? ""}\r\n"
+      body = body.concat(head.to_bytes())
+    end
+    for f in files do
+      let head = "--{boundary}\r\nContent-Disposition: form-data; name=\"{f.field}\"; filename=\"{f.filename}\"\r\nContent-Type: {f.content_type}\r\n\r\n"
+      body = body.concat(head.to_bytes()).concat(f.data).concat("\r\n".to_bytes())
+    end
+    body = body.concat("--{boundary}--\r\n".to_bytes())
+    let sent = self.build("POST", path, none)
+    sent.raw = body
+    sent.headers["content-type"] = "multipart/form-data; boundary={boundary}"
     self.deliver(sent)
   end
 
@@ -322,4 +349,4 @@ impl WsClient
   end
 end
 
-export Client, Reply, WsClient
+export Client, Reply, WsClient, TestFile

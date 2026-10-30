@@ -83,9 +83,7 @@ The set of commands of a program.
 
 ## `fun parse(text: string) -> Result<array<array<string>>, Error>`
 
-Reads CSV text separated by commas: one array of fields for each line. An empty line is a
-line with one empty field; a final new line does not make an extra line. `err` when a quoted
-field is never closed.
+Reads CSV text separated by commas: one array of fields for each line. An empty line is a line with one empty field; a final new line does not make an extra line. `err` when a quoted field is never closed.
 
 ## `fun parse_with(text: string, delimiter: string) -> Result<array<array<string>>, Error>`
 
@@ -93,9 +91,7 @@ Like `parse`, with another separator: one character, such as `";"` or `"\t"`.
 
 ## `fun parse_records(text: string) -> Result<array<map<string, string>>, Error>`
 
-Reads CSV text whose first line names the columns: one map for each following line, from
-the name of a column to the field. A line with fewer fields than the header has empty strings
-for the missing ones; extra fields are dropped.
+Reads CSV text whose first line names the columns: one map for each following line, from the name of a column to the field. A line with fewer fields than the header has empty strings for the missing ones; extra fields are dropped.
 
 ## `fun to_records(rows: array<array<string>>) -> Result<array<map<string, string>>, Error>`
 
@@ -103,8 +99,7 @@ The same as `parse_records` for rows already read.
 
 ## `fun to_text(rows: array<array<string>>) -> string`
 
-CSV text for these rows, separated by commas, each line ending with `\n`. A field is
-quoted only when it has to be (it holds the separator, a quote, or a new line).
+CSV text for these rows, separated by commas, each line ending with `\n`. A field is quoted only when it has to be (it holds the separator, a quote, or a new line).
 
 ## `fun to_text_with(rows: array<array<string>>, delimiter: string) -> string`
 
@@ -241,9 +236,7 @@ Checks a token against the keys and the options, and gives what it says.
 
 ## `fun keys_from_jwks(text: string) -> Result<array<Key>, Error>`
 
-The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publishes it. The algorithm is
-the `alg` of each key, or `RS256`, `ES256`/`ES384`, `EdDSA` from its type. Keys that are not for signatures
-are left out.
+The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publishes it. The algorithm is the `alg` of each key, or `RS256`, `ES256`/`ES384`, `EdDSA` from its type. Keys that are not for signatures are left out.
 
 # mail.q
 
@@ -490,8 +483,7 @@ A job that gave up.
 
 ## `trait QueueDriver`
 
-Where the jobs are kept: what a `Queue` needs from the database or from Redis. Times are in
-milliseconds.
+Where the jobs are kept: what a `Queue` needs from the database or from Redis. Times are in milliseconds.
 
 ## `struct DbDriver`
 
@@ -524,9 +516,7 @@ The jobs in a SQL database.
 
 ## `struct RedisDriver`
 
-The jobs in Redis, like Laravel's Redis queue: the ready jobs are a list, the delayed ones and the
-running ones sorted sets (by the time they are due, by the time their reservation ends), and a worker
-with nothing to do waits on a list that every push writes to, so a new job is picked up at once.
+The jobs in Redis, like Laravel's Redis queue: the ready jobs are a list, the delayed ones and the running ones sorted sets (by the time they are due, by the time their reservation ends), and a worker with nothing to do waits on a list that every push writes to, so a new job is picked up at once.
 
 **Fields**
 
@@ -554,8 +544,7 @@ with nothing to do waits on a list that every push writes to, so a new job is pi
 
 ## `struct Outcome`
 
-What a job does for the queue: `done`, `failed` (it will be tried again, or abandoned after the last
-attempt) or `released` (it waits, and the attempt is **not** counted: a middleware that says "not now").
+What a job does for the queue: `done`, `failed` (it will be tried again, or abandoned after the last attempt) or `released` (it waits, and the attempt is **not** counted: a middleware that says "not now").
 
 **Fields**
 
@@ -582,18 +571,15 @@ The job that a middleware sees.
 
 ## `struct Retry`
 
-`#[Retry(tries: 5, backoff: [10, 60, 300])]` on a job structure: how many times it is tried (3 by
-default), and the seconds to wait before attempt 2, 3...; the last number is used for the next ones.
+`#[Retry(tries: 5, backoff: [10, 60, 300])]` on a job structure: how many times it is tried (3 by default), and the seconds to wait before attempt 2, 3...; the last number is used for the next ones.
 
 ## `struct Unique`
 
-`#[Unique(seconds: 3600)]` on a job structure: while a job with the same fields waits or runs (at
-most `seconds`), pushing it again does nothing (`push` gives `false`).
+`#[Unique(seconds: 3600)]` on a job structure: while a job with the same fields waits or runs (at most `seconds`), pushing it again does nothing (`push` gives `false`).
 
 ## `struct Delay`
 
-`#[Delay(seconds: 30)]` on a job structure: it starts that long after it is pushed, unless `push_in`
-says otherwise.
+`#[Delay(seconds: 30)]` on a job structure: it starts that long after it is pushed, unless `push_in` says otherwise.
 
 ## `struct OnQueue`
 
@@ -690,8 +676,7 @@ Jobs that follow each other (`queue.chain()`).
 
 ## `struct Batch`
 
-Jobs done in parallel (`queue.batch()`): `when_done` pushes a job when all are done, `when_failed` when one gives up
-(once). The count is kept by the driver of the default queue, so any number of workers can finish them.
+Jobs done in parallel (`queue.batch()`): `when_done` pushes a job when all are done, `when_failed` when one gives up (once). The count is kept by the driver of the default queue, so any number of workers can finish them.
 
 **Fields**
 
@@ -709,14 +694,11 @@ Jobs done in parallel (`queue.batch()`): `when_done` pushes a job when all are d
 
 ## `fun rate_limited(cache: Cache, key: fun(Job) -> string, limit: int, seconds: int) -> fun(Job, fun() -> Outcome) -> Outcome`
 
-A middleware: at most `limit` jobs of the same key (by default their type) per `seconds`; the others wait
-for the next window, without using an attempt. The count is in `cache`: with Redis it is exact for every
-worker.
+A middleware: at most `limit` jobs of the same key (by default their type) per `seconds`; the others wait for the next window, without using an attempt. The count is in `cache`: with Redis it is exact for every worker.
 
 ## `fun without_overlapping(cache: Cache, key: fun(Job) -> string, expire_after: int, release_after: int) -> fun(Job, fun() -> Outcome) -> Outcome`
 
-A middleware: two jobs with the same key never run together; the second waits `release_after` seconds,
-without using an attempt. `expire_after` frees the key if a worker dies.
+A middleware: two jobs with the same key never run together; the second waits `release_after` seconds, without using an attempt. `expire_after` frees the key if a worker dies.
 
 ## `fun by_kind(job: Job) -> string`
 
@@ -809,8 +791,7 @@ A list of tasks.
 
 ## `fun render(source: string, data: Json) -> Result<string, Error>`
 
-Fills the template with `data` (a `Json` object). `err` if the template is wrong, or prints a
-value that does not exist.
+Fills the template with `data` (a `Json` object). `err` if the template is wrong, or prints a value that does not exist.
 
 ## `fun render_html(source: string, data: Json) -> Result<string, Error>`
 
@@ -824,9 +805,7 @@ Like `render`, for plain texts only: `values` maps names to strings.
 
 ## `fun parse(text: string) -> Result<Json, Error>`
 
-Reads TOML text into a `Json` object. `err`, with the line, when the text is not valid TOML
-(or uses something this reader does not do: the dates stay text, and the keys are not checked for
-all the fine points of the format).
+Reads TOML text into a `Json` object. `err`, with the line, when the text is not valid TOML (or uses something this reader does not do: the dates stay text, and the keys are not checked for all the fine points of the format).
 
 # web/app.q
 
@@ -836,13 +815,11 @@ all the fine points of the format).
 
 ## `struct Controller`
 
-`#[Controller("/posts")]` on a struct: its methods that carry a route annotation are routes,
-all under this prefix. See `App.controller`.
+`#[Controller("/posts")]` on a struct: its methods that carry a route annotation are routes, all under this prefix. See `App.controller`.
 
 ## `struct Guard`
 
-`#[Guard("auth")]` on a route or on a controller: the guard of that name (`App.guard`) runs
-before the handler, and may answer instead (`401`, a redirect...). Several can be stacked.
+`#[Guard("auth")]` on a route or on a controller: the guard of that name (`App.guard`) runs before the handler, and may answer instead (`401`, a redirect...). Several can be stacked.
 
 ## `struct Doc`
 
@@ -904,8 +881,7 @@ The parameter is a cookie of the request; the name defaults to the parameter's.
 
 ## `struct Problem`
 
-An error answer: a status, a message and, for a refused body, what is wrong with each
-field. It is written as `{"error": {"status": 422, "message": "...", "details": [...]}}`.
+An error answer: a status, a message and, for a refused body, what is wrong with each field. It is written as `{"error": {"status": 422, "message": "...", "details": [...]}}`.
 
 **Fields**
 
@@ -962,6 +938,10 @@ The application.
 - `fun delete(path: string, h: fun(Request) -> Response)`
 - `fun controllers(handlers: array<Callable>)` — Adds the functions with a route annotation (`#[Get("/x")]`, `#[Route(...)]`) as routes.
 - `fun controller(instance: T)` — Adds the public methods of `instance` that carry a route annotation as routes. The struct may carry `#[Controller("/prefix")]`. The instance lives as long as the application: what changes with each request (the user, a connection) comes in as a parameter of the method, like for a function.
+- `fun discover(declared: array<Callable>)` — Registers what a module declares (`Reflect.declared(module)`): its functions with a route annotation, and every structure marked `#[Controller]`, which the container builds from its fields (like a `#[di.Service]`) and whose public methods with a route annotation become routes. Nothing to list by hand: a controller added to the module is found.
+- `fun declare(declared: array<Callable>)` — Says which structures are controllers (`Reflect.declared(module)`): `validate` reports each one that was never registered, with `controller`, `controller_from_container` or `discover`, instead of leaving a silent `404`.
+- `fun boot(declared: array<Callable>) -> App` — An application from everything the modules of the project declare, in one call (`App.boot(Reflect.declared(providers).concat(Reflect.declared(controllers)))`): the functions without a route are providers, the structures marked `#[di.Service]` are services (the other structures are plain data), the functions with a route annotation and the structures marked `#[Controller]` are the routes. It panics with the list of mistakes of wiring if there are any (`validate`), so the application does not start half built; `assemble` is the same without that check.
+- `fun assemble(declared: array<Callable>) -> App` — Like `boot`, without checking the wiring (tests that add services afterwards).
 - `fun controller_from_container()` — Like `controller`, with the instance taken from the container (a provider returns `T`).
 - `fun validate() -> array<string>` — Every mistake of wiring, as texts (empty when all is well): handlers that cannot be built, services that are missing or in a cycle, routes hidden by an earlier one. Call it when the application starts.
 - `fun handle(req: Request) -> Response` — The response to a request: the middleware, then the route that takes it.
@@ -970,8 +950,7 @@ The application.
 
 ## `fun jwt_guard(keys: array<Key>, options: Options) -> fun(Request) -> Response?`
 
-Lets through the requests with a valid token: its signature and its dates are checked with `keys` and
-`options`. The token is kept for the route (`token_of`, `claims_of`).
+Lets through the requests with a valid token: its signature and its dates are checked with `keys` and `options`. The token is kept for the route (`token_of`, `claims_of`).
 
 ## `fun token_of(req: Request) -> Token?`
 
@@ -983,8 +962,7 @@ The claims of that token, read as a structure of yours.
 
 ## `fun scope_guard(required: array<string>) -> fun(Request) -> Response?`
 
-Lets through the tokens that have **all** of these permissions (`scope: "read write"`, or a list in
-`scopes` or `permissions`); the others get `403`. Put it after `jwt_guard`.
+Lets through the tokens that have **all** of these permissions (`scope: "read write"`, or a list in `scopes` or `permissions`); the others get `403`. Put it after `jwt_guard`.
 
 ## `fun fetch_jwks(url: string, cache: Cache, ttl: int) -> Result<array<Key>, Error>`
 
@@ -1010,8 +988,7 @@ A store in the memory of the worker.
 
 ## `struct FileStore`
 
-A store with a file per key in `dir`, which must exist. The first line of a file is the
-moment (milliseconds) its entry expires.
+A store with a file per key in `dir`, which must exist. The first line of a file is the moment (milliseconds) its entry expires.
 
 **Methods**
 
@@ -1072,14 +1049,11 @@ The migrations of the application, as a service.
 
 ## `struct Service`
 
-Marks a structure as a service: the container builds it from its fields (see
-`Container.services`). `#[Scoped]` and `#[Transient]` go next to it.
+Marks a structure as a service: the container builds it from its fields (see `Container.services`). `#[Scoped]` and `#[Transient]` go next to it.
 
 ## `fun services_of(constructors: array<Callable>) -> array<Callable>`
 
-The constructors (`Reflect.constructors(module)`) of the structures marked `#[Service]`: add
-them to the providers of something that takes a list (`Cli.new(Reflect.callables(providers)
-.concat(services_of(Reflect.constructors(providers))))`).
+The constructors (`Reflect.constructors(module)`) of the structures marked `#[Service]`: add them to the providers of something that takes a list (`Cli.new(Reflect.callables(providers) .concat(services_of(Reflect.constructors(providers))))`).
 
 ## `struct Scoped`
 
@@ -1170,8 +1144,7 @@ Counts by header and path, so that one client has a budget per route.
 
 ## `fun rate_limit(cache: Cache, limit: int, seconds: int, key_of: fun(Request) -> string) -> fun(Request, fun(Request) -> Response) -> Response`
 
-At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry
-`X-RateLimit-Limit` and `X-RateLimit-Remaining`.
+At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 
 # web/locale.q
 
@@ -1217,13 +1190,11 @@ Request counters kept in a cache.
 
 ## `fun logging() -> fun(Request, fun(Request) -> Response) -> Response`
 
-Writes one line in the log for each request: `GET /posts/2 -> 200 (3 ms)`, at the level `info`
-(`warn` for a 4xx, `error` for a 5xx).
+Writes one line in the log for each request: `GET /posts/2 -> 200 (3 ms)`, at the level `info` (`warn` for a 4xx, `error` for a 5xx).
 
 ## `fun security_headers() -> fun(Request, fun(Request) -> Response) -> Response`
 
-Adds the usual protective headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
-`Referrer-Policy: same-origin`. A header the route already set is kept.
+Adds the usual protective headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`. A header the route already set is kept.
 
 ## `struct CorsOptions`
 
@@ -1240,9 +1211,7 @@ What `cors_with` allows.
 
 ## `fun cors(origins: array<string>) -> fun(Request, fun(Request) -> Response) -> Response`
 
-Lets browsers of these origins (`["https://app.example"]`, or `["*"]`) call the API from a
-page: answers the preflight `OPTIONS` request itself and adds `Access-Control-Allow-Origin` to
-the other answers.
+Lets browsers of these origins (`["https://app.example"]`, or `["*"]`) call the API from a page: answers the preflight `OPTIONS` request itself and adds `Access-Control-Allow-Origin` to the other answers.
 
 ## `fun cors_with(o: CorsOptions) -> fun(Request, fun(Request) -> Response) -> Response`
 
@@ -1250,21 +1219,17 @@ the other answers.
 
 ## `fun bearer_token(check: fun(string) -> bool) -> fun(Request, fun(Request) -> Response) -> Response`
 
-Refuses (`401`) the requests that do not carry `Authorization: Bearer <token>` with a token
-that `check` accepts. Compare secrets with `Crypto.equal` inside `check`. The token is put in
-`req.attrs["token"]` for the handlers.
+Refuses (`401`) the requests that do not carry `Authorization: Bearer <token>` with a token that `check` accepts. Compare secrets with `Crypto.equal` inside `check`. The token is put in `req.attrs["token"]` for the handlers.
 
 ## `fun request_id() -> fun(Request, fun(Request) -> Response) -> Response`
 
-Gives each request an identifier: the `X-Request-Id` it came with, or a new one. It is put in
-`req.attrs["request_id"]` and in the response's `X-Request-Id`.
+Gives each request an identifier: the `X-Request-Id` it came with, or a new one. It is put in `req.attrs["request_id"]` and in the response's `X-Request-Id`.
 
 # web/migrate.q
 
 ## `struct Migration`
 
-One schema change: a unique `id` (sorted, so start it with a number or a date), the statements to
-apply and the statements to undo it.
+One schema change: a unique `id` (sorted, so start it with a number or a date), the statements to apply and the statements to undo it.
 
 **Fields**
 
@@ -1309,8 +1274,7 @@ The OpenAPI document of the routes of `app` (those made from functions or method
 
 ## `fun openapi_route(app: App, path: string, title: string, version: string)`
 
-Adds `GET path` that answers the document (written when the first request comes, so every
-route is in it).
+Adds `GET path` that answers the document (written when the first request comes, so every route is in it).
 
 # web/query.q
 
@@ -1408,8 +1372,7 @@ The `O` row each child points to: the one whose `key` is the child's `foreign_ke
 
 ## `fun belongs_to_many(db: Db, parents: array<P>, key: string, pivot: string, parent_key: string, related_key: string, table: string, id: string) -> Result<array<With<P, array<R>>>, Error>`
 
-Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of the parent) and a
-`related_key` column (the `id` of the related row in `table`).
+Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of the parent) and a `related_key` column (the `id` of the related row in `table`).
 
 # web/session.q
 
@@ -1431,26 +1394,63 @@ The data of one visitor.
 - `fun clear()` — Forgets everything (log out).
 - `fun flash_set(message: string)` — A message for the next request only (`"Saved"` after a form): read it with `flash`.
 - `fun flash() -> string?` — The message left by the previous request, and forgets it.
-- `fun csrf_token() -> string` — The token that pages must send back with a form (made the first time).
+- `fun csrf_token() -> string` — The token that pages must send back with a form (made the first time). It panics if the system has no secure randomness: a token anyone could guess would protect nothing.
+- `fun csrf_field() -> string` — The hidden field to put in a form: `<input type="hidden" name="_csrf" value="...">`.
+- `fun regenerate()` — A new identity for this visitor: call it when the user signs in or out, so that a token or an identifier seen before cannot be used with the new session (session fixation). The CSRF token changes too.
+- `fun id() -> string` — An identifier of this session, stable until `regenerate` (usable as a key for logs or a cache).
+- `fun flash_input(fields: map<string, string>)` — Keeps what the user typed in a form for the next request only, to show it again after a validation error (redirect to the form, then `old("title")`). Fields called `password...`, `_csrf` or `secret...` are left out.
+- `fun old(name: string) -> string?` — A field of the previous request's form (see `flash_input`), or `none`.
 
 ## `fun session_of(req: Request) -> Session`
 
 The session of this request (`sessions` middleware must be in use).
 
+## `struct Options`
+
+How long a session lives and how its cookie is sent.
+
+**Fields**
+
+- `secure: bool` — The `Secure` attribute: the cookie only travels over HTTPS. Turn it on behind HTTPS.
+- `lifetime: int` — Seconds without activity after which the session is forgotten (2 hours). The signed cookie carries its own expiry, so an old cookie that was copied stops working.
+- `same_site: string` — `Lax` (the default: not sent with requests another site starts, except links), `Strict` or `None`.
+
 ## `fun sessions(secret: string) -> fun(Request, fun(Request) -> Response) -> Response`
 
-Loads the session from the cookie `qs` (signed with `secret`) and writes it back when it
-changed. The cookie is `HttpOnly` and `SameSite=Lax`; give `secure: true` behind HTTPS.
+Loads the session from the cookie `qs` (signed with `secret`) and writes it back when it changed. The cookie is `HttpOnly` and `SameSite=Lax`, and the session ends after two hours without activity; give `secure: true` behind HTTPS (`sessions_with`), or choose the lifetime (`sessions_using`).
 
 ## `fun sessions_with(secret: string, secure: bool) -> fun(Request, fun(Request) -> Response) -> Response`
 
 Like `sessions`, with the `Secure` attribute of the cookie as you choose it.
 
+## `fun sessions_using(secret: string, options: Options) -> fun(Request, fun(Request) -> Response) -> Response`
+
+Like `sessions`, with the options you choose.
+
 ## `fun csrf_protect() -> fun(Request, fun(Request) -> Response) -> Response`
 
 Refuses the unsafe requests that do not carry the token of the session.
 
+## `fun csrf_protect_except(prefixes: array<string>) -> fun(Request, fun(Request) -> Response) -> Response`
+
+Like `csrf_protect`, but leaves alone the requests whose path starts with one of `prefixes`: an API for other programs (`"/api/"`, which authenticates with a token it sends itself) or a webhook that another service calls (`"/webhooks/"`). Everything else needs the token.
+
+## `fun protect(app: App, secret: string, options: Options)`
+
+The usual protection of a site with forms, in one call: sessions with a signed cookie (`HttpOnly`, `SameSite=Lax`, expiring) and the CSRF check. Give `secure: true` in `options` behind HTTPS. The token is read from the header `X-CSRF-Token` or from the field `_csrf` of a form (a form with files too).
+
 # web/testing.q
+
+## `struct TestFile`
+
+A file to send with `Client.post_multipart`.
+
+**Fields**
+
+- `field: string`
+- `filename: string`
+- `content_type: string`
+- `data: bytes`
 
 ## `struct Reply`
 
@@ -1491,6 +1491,7 @@ Sends requests to an application.
 - `fun put(path: string, body: string) -> Reply`
 - `fun patch(path: string, body: string) -> Reply`
 - `fun post_form(path: string, fields: map<string, string>) -> Reply` — `POST` of an HTML form: the fields as `application/x-www-form-urlencoded`.
+- `fun post_multipart(path: string, fields: map<string, string>, files: array<TestFile>) -> Reply` — `POST` of a `multipart/form-data` form: text fields and files.
 - `fun post_json(path: string, value: T) -> Reply` — `POST` with `value` as a JSON body.
 - `fun put_json(path: string, value: T) -> Reply`
 - `fun send_json(method: string, path: string, value: T) -> Reply`
@@ -1499,15 +1500,7 @@ Sends requests to an application.
 
 ## `struct WsClient`
 
-A WebSocket opened on an application without a network: what the server does is done here, one
-event at a time. The callbacks run in the test, so what they write is read with `received`.
-
-```
-let a = WsClient.open(app, "/chat?name=ada")
-a.received()              -- ["welcome ada"]
-a.send("hi")
-a.received()              -- what the handler answered
-```
+A WebSocket opened on an application without a network: what the server does is done here, one event at a time. The callbacks run in the test, so what they write is read with `received`. ``` let a = WsClient.open(app, "/chat?name=ada") a.received()              -- ["welcome ada"] a.send("hi") a.received()              -- what the handler answered ```
 
 **Fields**
 
@@ -1524,6 +1517,53 @@ a.received()              -- what the handler answered
 - `fun frames() -> array<WsFrame>` — Every frame the server sent since the last call (texts, binaries, a close).
 - `fun close()` — The client leaves: `on_close` runs.
 - `fun is_open() -> bool` — Whether the connection is still open (the server may have closed it).
+
+# web/upload.q
+
+## `struct Rules`
+
+What `receive` accepts.
+
+**Fields**
+
+- `max_size: int` — The largest file, in bytes (5 MB).
+- `max_files: int` — The most files in one request.
+- `types: array<string>` — The content types allowed (`["image/png", "image/jpeg"]`); empty: any.
+- `required: bool` — Refuse a request without any file (`422`).
+
+## `struct Upload`
+
+A file of the form.
+
+**Fields**
+
+- `field: string` — The name of the form field it came in.
+- `filename: string` — The name the browser gave it (do not trust it, do not use it as a path).
+- `content_type: string` — The type found in its content, or the one the browser announced.
+- `size: int`
+- `data: bytes`
+
+**Methods**
+
+- `fun extension() -> string` — The extension for the file name on disk, without the dot: from the recognised type, else the letters and digits of the original extension, else empty.
+- `fun save(dir: string) -> Result<string, Error>` — Writes the file in `dir` (made if missing) under a random name and gives its path.
+
+## `struct Submission`
+
+The text fields and the files of a form.
+
+**Fields**
+
+- `fields: map<string, string>`
+- `files: array<Upload>`
+
+## `fun sniff(data: bytes) -> string?`
+
+The content type of `data` read from its first bytes, or `none` when it is not one of the known formats (PNG, JPEG, GIF, WebP, PDF, ZIP, gzip).
+
+## `fun receive(req: Request, rules: Rules) -> Result<Submission, Problem>`
+
+Reads the multipart body of a request. The `Err` is a `Problem` (a handler can return it as it is): `400` for a body that is not multipart, `413` for a file or a count over the rules, `415` for a type that is not allowed, `422` when a file is `required` and there is none.
 
 # web/validate.q
 
@@ -1545,8 +1585,7 @@ The biggest number allowed.
 
 ## `struct Length`
 
-The number of characters of a text, or of elements of an array: at least `min`, at most
-`max` (`-1`: no limit).
+The number of characters of a text, or of elements of an array: at least `min`, at most `max` (`-1`: no limit).
 
 ## `struct Email`
 
@@ -1646,8 +1685,7 @@ The messages of a `Bus` (the database), read after the last one seen in each roo
 
 ## `struct RedisFeed`
 
-The messages of Redis channels (`ws:{room}`): the worker subscribes once per room, Redis pushes the
-messages, and `pull` only reads what already arrived: no query at all while nothing is said.
+The messages of Redis channels (`ws:{room}`): the worker subscribes once per room, Redis pushes the messages, and `pull` only reads what already arrived: no query at all while nothing is said.
 
 **Fields**
 
@@ -1676,25 +1714,7 @@ Publishes to the Redis channels a `RedisFeed` listens to.
 
 ## `struct Relay`
 
-Brings what a feed holds to the connections of **this worker**, with one read per room and
-interval whatever the number of connections (none at all with Redis, which pushes): the read is
-shared, the fan-out is in memory (through a `Hub`). Make one per worker, next to the hub.
-
-```
-let hub = ws.Hub.new()
-let relay = ws.Relay.new(bus, hub, 250)                   -- a bus in the database
--- or: let relay = ws.Relay.with_feed(redis_feed, hub, 50)   -- Redis
--- in the handler:
-on_open: fun(c: WebSocket)
-  hub.join("lobby", c)
-  relay.watch("lobby")
-end,
-on_tick: fun(c: WebSocket) relay.pump() end,
-```
-
-Every connection may call `pump` from its tick: the call returns at once unless the interval has
-passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls
-and one read per room each `interval`, instead of one query per connection.
+Brings what a feed holds to the connections of **this worker**, with one read per room and interval whatever the number of connections (none at all with Redis, which pushes): the read is shared, the fan-out is in memory (through a `Hub`). Make one per worker, next to the hub. ``` let hub = ws.Hub.new() let relay = ws.Relay.new(bus, hub, 250)                   -- a bus in the database -- or: let relay = ws.Relay.with_feed(redis_feed, hub, 50)   -- Redis -- in the handler: on_open: fun(c: WebSocket) hub.join("lobby", c) relay.watch("lobby") end, on_tick: fun(c: WebSocket) relay.pump() end, ``` Every connection may call `pump` from its tick: the call returns at once unless the interval has passed since the last read. A worker with 1 000 connections still makes `1000 / interval` cheap calls and one read per room each `interval`, instead of one query per connection.
 
 **Fields**
 
@@ -1712,7 +1732,5 @@ and one read per room each `interval`, instead of one query per connection.
 
 ## `fun origin_guard(allowed: array<string>) -> fun(Request) -> Response?`
 
-A guard that only lets through the requests whose `Origin` is one of these (or that have none,
-which is the case of programs that are not browsers). Register it with `app.guard("origin", ...)`
-and put `#[web.Guard("origin")]` on the WebSocket route.
+A guard that only lets through the requests whose `Origin` is one of these (or that have none, which is the case of programs that are not browsers). Register it with `app.guard("origin", ...)` and put `#[web.Guard("origin")]` on the WebSocket route.
 
