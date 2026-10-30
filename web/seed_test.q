@@ -69,7 +69,8 @@ fun test_a_failing_insert_is_an_error_not_a_panic()
   let f = users_factory()
   f.field("email", fun(n: int) -> Json Json.string("same@example.com") end)
   assert(f.create_many(db, 2).is_err())
-  assert_eq(count(db), 1)
+  -- all or none: the first row was undone with the second
+  assert_eq(count(db), 0)
 end
 
 fun test_seeders_run_in_order_each_in_a_transaction()

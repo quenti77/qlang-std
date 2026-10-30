@@ -21,7 +21,7 @@ import "@std/template.q" as template
 import "@std/toml.q" as toml
 ```
 
-(Il faut `qlang` 0.60 ou plus. Pour une application web, `qlang init --web mon-site` crée le projet, avec ce paquet.)
+(Il faut `qlang` 0.62 ou plus. Pour une application web, `qlang init --web mon-site` crée le projet, avec ce paquet.)
 
 ## Les modules
 
@@ -71,7 +71,7 @@ import "@std/web/middleware.q" as mw
 | [`web/query.q`](web/query.q) | constructeur de requêtes SQL avec `?` partout et noms vérifiés ; lignes lues comme des structures |
 | [`web/relations.q`](web/relations.q) | relations sans N+1 : `has_many<P, C>(db, parents, "id", "posts", "user_id")`, `has_one`, `belongs_to`, `belongs_to_many` (table pivot) : **une requête par relation**, chaque parent revient avec ses lignes liées (`With<P, R>`), `has_many_where` pour filtrer ou trier |
 | [`web/migrate.q`](web/migrate.q) | migrations (`up` / `down`) appliquées dans une transaction, mémorisées dans `schema_migrations` |
-| [`web/seed.q`](web/seed.q) | données de test : `Factory.table("users")` avec `field("email", fun(n) ...)` (le numéro de la ligne rend les valeurs uniques), `state("admin", {...})`, `make()` / `create(db)` / `create_many(db, 25)` ; `Seeder` et `run_seeders` (chacun dans une transaction) ; la commande `db:seed` |
+| [`web/seed.q`](web/seed.q) | données de test : `Factory.table("users")` avec `field("email", fun(n) ...)` (le numéro de la ligne rend les valeurs uniques), `state("admin", {...})`, `make()` / `create(db)` / `create_many(db, 25)` (tout ou rien) ; `Seeder` et `run_seeders` (chacun dans une transaction) ; la commande `db:seed` |
 | [`web/session.q`](web/session.q) | sessions dans un cookie signé et **expirant** (`HttpOnly`, `SameSite=Lax`, `Secure` au choix), `regenerate()` à la connexion, messages flash, saisie du formulaire à remontrer après une erreur (`flash_input`, `old`), protection CSRF (`protect(app, secret, Options {})`, jeton lu aussi dans un formulaire avec fichiers) |
 | [`web/upload.q`](web/upload.q) | fichiers envoyés par un formulaire `multipart/form-data` : `receive(req, Rules { max_size, max_files, types })` (taille, nombre, **type lu dans le contenu**), `Upload.save(dossier)` sous un nom aléatoire |
 | [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `post_form`, `post_multipart` (fichiers), `json<T>()`, `expect_status` |
