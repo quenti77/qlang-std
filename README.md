@@ -21,7 +21,7 @@ import "@std/template.q" as template
 import "@std/toml.q" as toml
 ```
 
-(Il faut `qlang` 0.49 ou plus.)
+(Il faut `qlang` 0.60 ou plus. Pour une application web, `qlang init --web mon-site` crée le projet, avec ce paquet.)
 
 ## Les modules
 
@@ -71,8 +71,9 @@ import "@std/web/middleware.q" as mw
 | [`web/query.q`](web/query.q) | constructeur de requêtes SQL avec `?` partout et noms vérifiés ; lignes lues comme des structures |
 | [`web/relations.q`](web/relations.q) | relations sans N+1 : `has_many<P, C>(db, parents, "id", "posts", "user_id")`, `has_one`, `belongs_to`, `belongs_to_many` (table pivot) : **une requête par relation**, chaque parent revient avec ses lignes liées (`With<P, R>`), `has_many_where` pour filtrer ou trier |
 | [`web/migrate.q`](web/migrate.q) | migrations (`up` / `down`) appliquées dans une transaction, mémorisées dans `schema_migrations` |
-| [`web/session.q`](web/session.q) | sessions dans un cookie signé, messages flash, protection CSRF |
-| [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `post_form`, `json<T>()`, `expect_status` |
+| [`web/session.q`](web/session.q) | sessions dans un cookie signé et **expirant** (`HttpOnly`, `SameSite=Lax`, `Secure` au choix), `regenerate()` à la connexion, messages flash, saisie du formulaire à remontrer après une erreur (`flash_input`, `old`), protection CSRF (`protect(app, secret, Options {})`, jeton lu aussi dans un formulaire avec fichiers) |
+| [`web/upload.q`](web/upload.q) | fichiers envoyés par un formulaire `multipart/form-data` : `receive(req, Rules { max_size, max_files, types })` (taille, nombre, **type lu dans le contenu**), `Upload.save(dossier)` sous un nom aléatoire |
+| [`web/testing.q`](web/testing.q) | `Client` : envoie des requêtes à `App.handle` sans serveur, garde les cookies, `post_json`, `post_form`, `post_multipart` (fichiers), `json<T>()`, `expect_status` |
 | [`web/events.q`](web/events.q) | `Events` : `listen<E>(f)`, `dispatch(événement)`, par type d'événement |
 | [`web/cache.q`](web/cache.q) | `Cache` (texte ou valeurs en JSON, durée de vie, `remember`, `increment`) sur un `Store` : mémoire du worker, fichiers de la machine ou Redis |
 | [`web/limit.q`](web/limit.q) | `rate_limit(cache, 100, 60, by_header("x-forwarded-for"))` : `429` avec `Retry-After` ; avec `Cache.redis(...)` le compte est exact pour toutes les machines |
@@ -86,6 +87,44 @@ import "@std/web/middleware.q" as mw
 | [`web/metrics.q`](web/metrics.q) | métriques Prometheus : `Metrics.new(cache, app)`, `app.use(metrics.middleware())`, `metrics.mount(app, "/metrics", garde)` ; compteurs par **motif de route** (jamais par chemin), histogramme des durées, taille de la file ; partagés entre workers avec `Cache.redis` |
 | [`web/health.q`](web/health.q) | `Health.new()`, `check("database", db_check(db))`, `mount(app, "/health")` : `…/live` (toujours 200) et `…/ready` (503 si un contrôle échoue, sans dire pourquoi) |
 | [`web/openapi.q`](web/openapi.q) | `openapi(app, titre, version)` : le document OpenAPI 3.1 d'après les routes, `openapi_route(app, "/openapi.json", ...)` |
+
+### Démarrer, et où mettre quoi
+
+```sh
+qlang init --web mon-site && cd mon-site
+qlang serve main.q --watch --dev          # http://localhost:8080
+qlang test
+```
+
+`App.boot` assemble l'application d'après ce que les modules **déclarent** : rien à enregistrer à la main.
+
+```
+import "@std/web/app.q" as web
+import "providers.q" as providers
+import "controllers.q" as controllers
+
+let app = web.App.boot(Reflect.declared(providers).concat(Reflect.declared(controllers)))
+
+fun handle(req: Request) -> Response
+  app.handle(req)
+end
+```
+
+- une **fonction** de `providers.q` est un fournisseur : elle rend un `T`, ses paramètres sont ses besoins ;
+- une **structure** marquée `#[di.Service]` est un service, construit à partir de ses champs ;
+- une **fonction** avec `#[web.Get(...)]` est une route ; une **structure** marquée `#[web.Controller("/x")]` est un
+  contrôleur (ses champs sont ses dépendances, ses méthodes publiques annotées sont ses routes) ;
+- `boot` s'arrête avec la liste des erreurs de câblage (service manquant, cycle, garde inconnue) plutôt que de
+  démarrer à moitié ; `App.assemble` fait la même chose sans cette vérification (pour les tests qui ajoutent des
+  services ensuite). Un contrôleur oublié n'existe plus : s'il est dans un module donné à `boot`, il est trouvé ;
+  pour une application montée à la main, `app.declare(Reflect.declared(controllers))` fait signaler par
+  `validate()` chaque contrôleur déclaré mais jamais enregistré, au lieu d'un `404` silencieux.
+
+Organisation conseillée d'un projet qui grandit : `main.q` (la fonction `handle`, les middlewares du serveur),
+`app.q` (`build()`, que les tests appellent aussi), `providers.q` ou un dossier `infrastructure/` (configuration,
+base, dépôts), `domain/` (les structures et les règles, sans HTTP), `controllers/` (les routes, qui n'appellent
+que des services), `*_test.q` à côté de ce qu'ils testent. `boot` accepte plusieurs modules :
+`Reflect.declared(a).concat(Reflect.declared(b))`.
 
 Un exemple complet (une API JSON avec SQLite) est dans [`examples/blog`](examples/blog) :
 
@@ -149,8 +188,8 @@ qlang doc -o API.md # régénérer l'API
 
 - **YAML** : un sous-ensemble courant reste à décider ; le format complet est très long à lire
   correctement.
-- **Envoyer un mail (SMTP), S3** : impossible en qlang pur, il faut des fournisseurs d'`extern`
-  (des programmes externes), qui demandent leur propre dépôt.
+- **Sessions côté serveur** (base, Redis) : la session est un cookie signé, limité à environ 3 Ko et lisible par
+  l'utilisateur (signé, pas chiffré) ; ni identifiant côté serveur à révoquer, ni partage entre appareils.
 
 ## Licence
 
