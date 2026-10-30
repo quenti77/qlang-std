@@ -1015,6 +1015,25 @@ A store in Redis, shared by every worker of every machine. `prefix` is put befor
 - `fun drop(key: string)`
 - `fun incr(key: string, ttl: int) -> int`
 
+## `struct DbStore`
+
+A store in a SQL database (SQLite, PostgreSQL, MySQL): one row per key in `table`, shared by every worker of every machine that uses the database. Call `install()` once (a migration, or at start up) to make the table. Writing replaces the row; a counter (`incr`) is read then written, so it is not exact when two workers increase it at the same moment: use Redis for a limit that must be.
+
+**Fields**
+
+- `db: Db`
+- `table: string`
+
+**Methods**
+
+- `fun new(db: Db, table: string) -> DbStore`
+- `fun install() -> Result<bool, Error>` — Makes the table if it does not exist.
+- `fun prune() -> Result<int, Error>` — Removes the rows that expired; how many.
+- `fun read(key: string) -> string?`
+- `fun write(key: string, value: string, ttl: int)`
+- `fun drop(key: string)`
+- `fun incr(key: string, ttl: int) -> int`
+
 ## `struct Cache`
 
 A cache over a store.
@@ -1024,6 +1043,7 @@ A cache over a store.
 - `fun new(store: Store) -> Cache`
 - `fun memory() -> Cache` — A cache in the memory of the worker.
 - `fun redis(redis: Redis, prefix: string) -> Cache` — A cache in Redis (shared by every worker of every machine); keys start with `prefix`.
+- `fun database(db: Db, table: string) -> Cache` — A cache in a SQL database, in `table` (made by `DbStore.new(db, table).install()`).
 - `fun increment(key: string, ttl: int) -> int` — Adds 1 to a counter and gives the new value; a new counter lives `ttl` seconds. Atomic in Redis, so a limit shared by several workers stays exact.
 - `fun files(dir: string) -> Cache` — A cache in files of `dir` (shared by the workers).
 - `fun scoped(name: string) -> Cache` — The same store, with `name:` put before every key (one cache per feature).
@@ -1290,6 +1310,26 @@ Adds `GET path` that answers the document (written when the first request comes,
 
 The rules about one kind of item (`S`) for one kind of user (`U`).
 
+# web/proxy.q
+
+## `fun scheme(req: Request) -> string`
+
+The scheme the visitor used (`https` or `http`), as the proxy says it; `http` without the header.
+
+## `fun is_https(req: Request) -> bool`
+
+## `fun client_ip(req: Request) -> string?`
+
+The address of the visitor: the first one of `X-Forwarded-For`, or `none` without the header.
+
+## `fun host(req: Request) -> string?`
+
+The host the visitor asked for (`X-Forwarded-Host`, else `Host`).
+
+## `fun redirect_to_https() -> fun(Request, fun(Request) -> Response) -> Response`
+
+Sends a `301` to the `https://` address of every request the proxy received in plain HTTP. A request that did not come through a proxy (no `X-Forwarded-Proto`) is left alone, so that the program still works on your machine.
+
 # web/query.q
 
 ## `struct Page`
@@ -1472,6 +1512,7 @@ The data of one visitor.
 - `data: map<string, string>`
 - `changed: bool`
 - `fresh: bool`
+- `rotated: bool` — Set by `regenerate`: with a server-side store, the middleware then gives the data a new identifier.
 
 **Methods**
 
@@ -1501,6 +1542,8 @@ How long a session lives and how its cookie is sent.
 - `secure: bool` — The `Secure` attribute: the cookie only travels over HTTPS. Turn it on behind HTTPS.
 - `lifetime: int` — Seconds without activity after which the session is forgotten (2 hours). The signed cookie carries its own expiry, so an old cookie that was copied stops working.
 - `same_site: string` — `Lax` (the default: not sent with requests another site starts, except links), `Strict` or `None`.
+- `store: Store?` — Where the data lives. `none` (the default): in the signed cookie itself (about 3 KB, shared by nobody). A `cache.Store` (`cache.DbStore`, `cache.RedisStore`, ...): the cookie only carries a random identifier, signed, and the data stays on the server: no size limit, can be ended from the server, and shared by every worker (`cache.MemoryStore` is one per worker).
+- `prefix: string` — With a store, the keys start with this.
 
 ## `fun sessions(secret: string) -> fun(Request, fun(Request) -> Response) -> Response`
 

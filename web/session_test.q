@@ -1,4 +1,5 @@
 import "app.q" as web
+import "cache.q" as cache
 import "session.q" as sess
 import "testing.q" as testing
 
@@ -243,4 +244,85 @@ fun test_the_csrf_field_of_a_form_with_files_is_read()
   let file = testing.TestFile { field: "doc", filename: "a.txt", content_type: "text/plain", data: "hi".to_bytes() }
   client.post_multipart("/upload", {}, [file]).expect_status(403)
   client.post_multipart("/upload", {"_csrf": t.body}, [file]).expect_status(200)
+end
+
+fun stored_app(store: cache.Store) -> web.App
+  let app = web.App.new([])
+  app.use(sess.sessions_using("secret", sess.Options { store: store }))
+  app.get("/visit", fun(r: Request) -> Response
+    let s = sess.session_of(r)
+    let n = int.parse(s.get("n") ?? "0") ?? 0
+    s.set("n", "{n + 1}")
+    Response.text("visit {n + 1}")
+  end)
+  app.get("/login", fun(r: Request) -> Response
+    let s = sess.session_of(r)
+    s.set("user", "ada")
+    s.regenerate()
+    Response.text("in")
+  end)
+  app.get("/logout", fun(r: Request) -> Response
+    sess.session_of(r).clear()
+    Response.text("out")
+  end)
+  app.get("/who", fun(r: Request) -> Response Response.text(sess.session_of(r).get("user") ?? "nobody") end)
+  app
+end
+
+fun with_cookie(path: string, value: string) -> Request
+  let r = req("GET", path)
+  r.cookies["qs"] = value
+  r
+end
+
+fun test_a_server_side_session_only_puts_a_signed_identifier_in_the_cookie()
+  let store = cache.MemoryStore.new()
+  let app = stored_app(store)
+  let first = app.handle(req("GET", "/visit"))
+  let c = cookie_of(first)
+  assert(not c.value.contains("eyJ"))
+  assert_eq(c.max_age, 7200)
+  assert_eq(app.handle(with_cookie("/visit", c.value)).body, "visit 2")
+  -- a cookie whose signature is wrong is a stranger
+  let id = c.value.substring(0, c.value.last_index_of(".") ?? 0)
+  assert_eq(app.handle(with_cookie("/visit", id + ".forged")).body, "visit 1")
+  assert_eq(app.handle(with_cookie("/visit", "{id}")).body, "visit 1")
+end
+
+fun test_the_data_is_shared_by_every_worker_that_shares_the_store()
+  let store = cache.MemoryStore.new()
+  let one = stored_app(store)
+  let two = stored_app(store)
+  let c = cookie_of(one.handle(req("GET", "/visit")))
+  assert_eq(two.handle(with_cookie("/visit", c.value)).body, "visit 2")
+  assert_eq(one.handle(with_cookie("/visit", c.value)).body, "visit 3")
+end
+
+fun test_regenerate_gives_a_new_identifier_and_the_old_one_stops_working()
+  let store = cache.MemoryStore.new()
+  let app = stored_app(store)
+  let before = cookie_of(app.handle(req("GET", "/visit")))
+  let after = cookie_of(app.handle(with_cookie("/login", before.value)))
+  assert(after.value != before.value)
+  assert_eq(app.handle(with_cookie("/who", after.value)).body, "ada")
+  assert_eq(app.handle(with_cookie("/who", before.value)).body, "nobody")
+end
+
+fun test_clearing_ends_the_session_on_the_server()
+  let store = cache.MemoryStore.new()
+  let app = stored_app(store)
+  let c = cookie_of(app.handle(with_cookie("/login", cookie_of(app.handle(req("GET", "/visit"))).value)))
+  let out = app.handle(with_cookie("/logout", c.value))
+  assert_eq(cookie_of(out).max_age, 0)
+  assert_eq(app.handle(with_cookie("/who", c.value)).body, "nobody")
+end
+
+fun test_sessions_can_live_in_a_database()
+  let db = Db.connect("sqlite://:memory:").unwrap()
+  let store = cache.DbStore.new(db, "sessions")
+  store.install().unwrap()
+  let app = stored_app(store)
+  let c = cookie_of(app.handle(req("GET", "/visit")))
+  assert_eq(app.handle(with_cookie("/visit", c.value)).body, "visit 2")
+  assert_eq(db.query("SELECT k FROM sessions", []).unwrap().len(), 1)
 end
