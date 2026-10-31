@@ -43,10 +43,6 @@ struct With<P, R>
   public related: R
 end
 
-fun relation_error<T>(message: string) -> Result<T, Error>
-  Result<T, Error>.Err(Error { message: message })
-end
-
 -- The values of the field `name` of each item (without duplicates), as Json, and the Json of each item.
 fun keys_of<P>(items: array<P>, name: string) -> Result<array<Json>, Error>
   let seen: map<string, bool> = {}

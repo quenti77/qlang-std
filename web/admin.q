@@ -184,10 +184,6 @@ fun problem(status: int, message: string) -> Response
   web.Problem { status: status, message: message }.to_response()
 end
 
-fun wants_json(req: Request) -> bool
-  req.path.contains("/api/")
-end
-
 -- ------------------------------------------------------------------------ the data
 
 struct Listing

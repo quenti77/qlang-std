@@ -113,10 +113,12 @@ impl Tasks
   end
 end
 
+#[used]
 fun make_config() -> Config
   Config { database: env.get("TASKS_DB") ?? "sqlite://:memory:", secret: env.get("TASKS_SECRET") ?? "dev-only-secret-dev-only-secret-0123456789" }
 end
 
+#[used]
 fun make_db(config: Config) -> Db
   let db = Db.connect(config.database).unwrap()
   migrate.Migrator.new(db).run([

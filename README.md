@@ -202,3 +202,11 @@ qlang doc -o API.md # régénérer l'API
 ## Licence
 
 MIT.
+
+## Stability and version 0.20.0
+
+`qlang.toml` has a `[stability]` table (provisional or experimental, file by file); `qlang doc` writes the level under
+each file of [API.md](API.md), and the CI runs `qlang doc --require-levels`, so a new file must say its level. The
+providers and other functions the container finds by reflection carry `#[used]` (so `qlang lint` leaves them alone), which
+needs qlang 0.73 or later; two private functions nobody called (`wants_json` in `web/admin.q`, `relation_error` in
+`web/relations.q`) were removed.
