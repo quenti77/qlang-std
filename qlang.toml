@@ -1,4 +1,18 @@
 [package]
 name = "std"
-version = "0.19.0"
+version = "0.20.0"
 main = "csv.q"
+
+# the level of each file (see docs/stability.md of qlang): `qlang doc` writes it under the title in API.md
+[stability]
+provisional = [
+  "csv.q", "toml.q", "yaml.q", "xml.q", "template.q", "jwt.q", "i18n.q", "cli.q",
+  "queue.q", "schedule.q", "mail.q", "notify.q", "s3.q",
+  "web/app.q", "web/session.q", "web/validate.q", "web/migrate.q", "web/query.q", "web/cache.q",
+  "web/middleware.q", "web/health.q", "web/limit.q", "web/auth.q", "web/upload.q", "web/testing.q",
+]
+experimental = [
+  "web/container.q", "web/openapi.q", "web/ws.q", "web/relations.q", "web/policy.q", "web/resource.q",
+  "web/seed.q", "web/queue_admin.q", "web/metrics.q", "web/events.q", "web/commands.q", "web/locale.q",
+  "web/refresh.q", "web/proxy.q", "web/accounts.q", "web/admin.q",
+]

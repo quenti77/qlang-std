@@ -40,12 +40,14 @@ impl Posts
   end
 end
 
+#[used]
 fun make_config() -> Config
   let database = env.get("BLOG_DB")
   let secret = env.get("BLOG_SECRET")
   Config { database: if database == none then "sqlite://:memory:" else database end, secret: if secret == none then "dev-only-secret" else secret end }
 end
 
+#[used]
 fun make_db(config: Config) -> Db
   let db = Db.connect(config.database).unwrap()
   let applied = migrate.Migrator.new(db).run([
@@ -62,6 +64,7 @@ fun make_db(config: Config) -> Db
   db
 end
 
+#[used]
 fun make_posts(db: Db) -> Posts
   Posts { db: db }
 end

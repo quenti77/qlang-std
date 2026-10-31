@@ -42,10 +42,12 @@ impl Posts
   end
 end
 
+#[used]
 fun make_posts() -> Posts
   Posts { items: [Post { id: 1, title: "First" }, Post { id: 2, title: "Second" }] }
 end
 
+#[used]
 fun make_clock() -> Clock
   Clock { now: 1000 }
 end

@@ -1,5 +1,7 @@
 # cli.q
 
+_Stability: **provisional**._
+
 ## `struct Command`
 
 `#[Command("db:migrate", "Runs the migrations")]`: this function is a command.
@@ -81,6 +83,8 @@ The set of commands of a program.
 
 # csv.q
 
+_Stability: **provisional**._
+
 ## `fun parse(text: string) -> Result<array<array<string>>, Error>`
 
 Reads CSV text separated by commas: one array of fields for each line. An empty line is a line with one empty field; a final new line does not make an extra line. `err` when a quoted field is never closed.
@@ -106,6 +110,8 @@ CSV text for these rows, separated by commas, each line ending with `\n`. A fiel
 Like `to_text`, with another one-character separator.
 
 # i18n.q
+
+_Stability: **provisional**._
 
 ## `struct Translator`
 
@@ -158,6 +164,8 @@ The language part of a tag: `fr` for `fr-CA` and `fr_CA`.
 The built-in plural rule of a language.
 
 # jwt.q
+
+_Stability: **provisional**._
 
 ## `struct Key`
 
@@ -239,6 +247,8 @@ Checks a token against the keys and the options, and gives what it says.
 The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publishes it. The algorithm is the `alg` of each key, or `RS256`, `ES256`/`ES384`, `EdDSA` from its type. Keys that are not for signatures are left out.
 
 # mail.q
+
+_Stability: **provisional**._
 
 ## `struct Mail`
 
@@ -359,6 +369,8 @@ Teaches `queue` to do the `SendMail` jobs with `mailer` (a refused mail is tried
 
 # notify.q
 
+_Stability: **provisional**._
+
 ## `struct Notification`
 
 What is told.
@@ -455,6 +467,8 @@ The channels of the application, by name.
 - `fun send(names: array<string>, to: string, n: Notification) -> array<string>` — Sends on each named channel. Gives the errors, one per channel that failed (an empty list: all went well). An unknown channel name is an error too.
 
 # queue.q
+
+_Stability: **provisional**._
 
 ## `struct JobRow`
 
@@ -710,6 +724,8 @@ A key: the type and the fields of the job.
 
 # s3.q
 
+_Stability: **provisional**._
+
 ## `struct S3`
 
 A bucket.
@@ -738,6 +754,8 @@ A bucket.
 - `fun presign(method: string, key: string, seconds: int) -> string` — A link that lets whoever has it do `method` (`GET`, `PUT`, `DELETE`) on the object for `seconds` (at most 7 days), without any key: for a browser that uploads or downloads by itself.
 
 # schedule.q
+
+_Stability: **provisional**._
 
 ## `struct Cron`
 
@@ -789,6 +807,8 @@ A list of tasks.
 
 # template.q
 
+_Stability: **provisional**._
+
 ## `fun render(source: string, data: Json) -> Result<string, Error>`
 
 Fills the template with `data` (a `Json` object). `err` if the template is wrong, or prints a value that does not exist.
@@ -803,11 +823,15 @@ Like `render`, for plain texts only: `values` maps names to strings.
 
 # toml.q
 
+_Stability: **provisional**._
+
 ## `fun parse(text: string) -> Result<Json, Error>`
 
 Reads TOML text into a `Json` object. `err`, with the line, when the text is not valid TOML (or uses something this reader does not do: the dates stay text, and the keys are not checked for all the fine points of the format).
 
 # web/accounts.q
+
+_Stability: **experimental**._
 
 ## `struct Options`
 
@@ -878,6 +902,8 @@ A guard: signed in **and** with a checked email (`403` when the address is not c
 
 # web/admin.q
 
+_Stability: **experimental**._
+
 ## `struct Column`
 
 A column of a table. `kind` is `text`, `textarea`, `number` or `bool`.
@@ -928,6 +954,8 @@ The panel: a database and the resources it shows.
 Adds the pages and the API of the table above under `prefix` (`"/admin"`), behind `guard`. The session middleware must be on. Panics at once if a resource is badly declared.
 
 # web/app.q
+
+_Stability: **provisional**._
 
 ## `struct Get`
 
@@ -1068,6 +1096,8 @@ The application.
 
 # web/auth.q
 
+_Stability: **provisional**._
+
 ## `fun jwt_guard(keys: array<Key>, options: Options) -> fun(Request) -> Response?`
 
 Lets through the requests with a valid token: its signature and its dates are checked with `keys` and `options`. The token is kept for the route (`token_of`, `claims_of`).
@@ -1089,6 +1119,8 @@ Lets through the tokens that have **all** of these permissions (`scope: "read wr
 The keys of the JWKS published at `url`, kept `ttl` seconds in the cache.
 
 # web/cache.q
+
+_Stability: **provisional**._
 
 ## `trait Store`
 
@@ -1177,6 +1209,8 @@ A cache over a store.
 
 # web/commands.q
 
+_Stability: **experimental**._
+
 ## `struct Migrations`
 
 The migrations of the application, as a service.
@@ -1194,6 +1228,8 @@ The seeders of the application, as a service (for `db:seed`).
 - `list: array<Seeder>`
 
 # web/container.q
+
+_Stability: **experimental**._
 
 ## `struct Service`
 
@@ -1244,6 +1280,8 @@ Services, built from providers.
 
 # web/events.q
 
+_Stability: **experimental**._
+
 ## `struct Events`
 
 A set of listeners, by the type of event.
@@ -1256,6 +1294,8 @@ A set of listeners, by the type of event.
 - `fun count() -> int` — How many listeners wait for events of type `E`.
 
 # web/health.q
+
+_Stability: **provisional**._
 
 ## `struct Health`
 
@@ -1282,6 +1322,8 @@ A check that sends `PING` to Redis.
 
 # web/limit.q
 
+_Stability: **provisional**._
+
 ## `fun by_header(name: string) -> fun(Request) -> string`
 
 Counts by the value of a request header (`"unknown"` when absent).
@@ -1295,6 +1337,8 @@ Counts by header and path, so that one client has a budget per route.
 At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 
 # web/locale.q
+
+_Stability: **experimental**._
 
 ## `fun locale_of(req: Request) -> string`
 
@@ -1313,6 +1357,8 @@ A provider for `Lang` handler parameters: add it with `Reflect.callable(locale, 
 Sets everything up: the translator and the `Lang` service in the container, and the middleware.
 
 # web/metrics.q
+
+_Stability: **experimental**._
 
 ## `struct Metrics`
 
@@ -1335,6 +1381,8 @@ Request counters kept in a cache.
 - `fun mount(app: App, path: string, guard: fun(Request) -> Response?)` — Adds `GET path` that serves the page, behind `guard` (give one: metrics tell attackers how your site is used).
 
 # web/middleware.q
+
+_Stability: **provisional**._
 
 ## `fun logging() -> fun(Request, fun(Request) -> Response) -> Response`
 
@@ -1375,6 +1423,8 @@ Gives each request an identifier: the `X-Request-Id` it came with, or a new one.
 
 # web/migrate.q
 
+_Stability: **provisional**._
+
 ## `struct Migration`
 
 One schema change: a unique `id` (sorted, so start it with a number or a date), the statements to apply and the statements to undo it.
@@ -1412,6 +1462,8 @@ Where a migration stands.
 
 # web/openapi.q
 
+_Stability: **experimental**._
+
 ## `fun schema_of(t: TypeInfo, schemas: Schemas) -> Json`
 
 The schema of a type; structures are put in `schemas` and referred to.
@@ -1426,11 +1478,15 @@ Adds `GET path` that answers the document (written when the first request comes,
 
 # web/policy.q
 
+_Stability: **experimental**._
+
 ## `struct Policy`
 
 The rules about one kind of item (`S`) for one kind of user (`U`).
 
 # web/proxy.q
+
+_Stability: **experimental**._
 
 ## `fun scheme(req: Request) -> string`
 
@@ -1451,6 +1507,8 @@ The host the visitor asked for (`X-Forwarded-Host`, else `Host`).
 Sends a `301` to the `https://` address of every request the proxy received in plain HTTP. A request that did not come through a proxy (no `X-Forwarded-Proto`) is left alone, so that the program still works on your machine.
 
 # web/query.q
+
+_Stability: **provisional**._
 
 ## `struct Page`
 
@@ -1502,11 +1560,15 @@ A SELECT, INSERT, UPDATE or DELETE under construction.
 
 # web/queue_admin.q
 
+_Stability: **experimental**._
+
 ## `fun mount(app: App, queue: Queue, path: string, guard: fun(Request) -> Response?)`
 
 Adds the dashboard routes under `path`; `guard` runs first on each of them (`none`: let through).
 
 # web/refresh.q
+
+_Stability: **experimental**._
 
 ## `struct Refresh`
 
@@ -1540,6 +1602,8 @@ The token to send, and the user it belongs to.
 
 # web/relations.q
 
+_Stability: **experimental**._
+
 ## `struct With`
 
 A row and what relates to it.
@@ -1571,6 +1635,8 @@ Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of th
 
 # web/resource.q
 
+_Stability: **experimental**._
+
 ## `struct Resource`
 
 **Methods**
@@ -1585,6 +1651,8 @@ Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of th
 - `fun shape() -> fun(map<string, Json>) -> Json` — The resource as a function, for `Page.to_json_with`.
 
 # web/seed.q
+
+_Stability: **experimental**._
 
 ## `struct Factory`
 
@@ -1622,6 +1690,8 @@ A seeder's way to say it worked: `done(users.create_many(db, 10))` is `Ok(true)`
 Runs the seeders in order, each in a transaction (a failure undoes that one and stops there). The names of the ones that ran, or the error with the name of the one that failed.
 
 # web/session.q
+
+_Stability: **provisional**._
 
 ## `struct Session`
 
@@ -1690,6 +1760,8 @@ Like `csrf_protect`, but leaves alone the requests whose path starts with one of
 The usual protection of a site with forms, in one call: sessions with a signed cookie (`HttpOnly`, `SameSite=Lax`, expiring) and the CSRF check. Give `secure: true` in `options` behind HTTPS. The token is read from the header `X-CSRF-Token` or from the field `_csrf` of a form (a form with files too).
 
 # web/testing.q
+
+_Stability: **provisional**._
 
 ## `struct TestFile`
 
@@ -1770,6 +1842,8 @@ A WebSocket opened on an application without a network: what the server does is 
 
 # web/upload.q
 
+_Stability: **provisional**._
+
 ## `struct Rules`
 
 What `receive` accepts.
@@ -1816,6 +1890,8 @@ The content type of `data` read from its first bytes, or `none` when it is not o
 Reads the multipart body of a request. The `Err` is a `Problem` (a handler can return it as it is): `400` for a body that is not multipart, `413` for a file or a count over the rules, `415` for a type that is not allowed, `422` when a file is `required` and there is none.
 
 # web/validate.q
+
+_Stability: **provisional**._
 
 ## `struct NotBlank`
 
@@ -1874,6 +1950,8 @@ Checks values against the rules written on their fields.
 - `fun is_valid(value: Any) -> bool` — Whether `value` has no error.
 
 # web/ws.q
+
+_Stability: **experimental**._
 
 ## `struct Hub`
 
@@ -1986,6 +2064,8 @@ A guard that only lets through the requests whose `Origin` is one of these (or t
 
 # xml.q
 
+_Stability: **provisional**._
+
 ## `struct XmlNode`
 
 **Fields**
@@ -2026,6 +2106,8 @@ The first element a path leads to, or `none`.
 The texts a path leads to: the attribute of `.../@id`, the text of `.../text()`, or, for a path to elements, their whole text (`deep_text`).
 
 # yaml.q
+
+_Stability: **provisional**._
 
 ## `fun parse(text: string) -> Result<Json, Error>`
 

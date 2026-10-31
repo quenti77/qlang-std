@@ -50,15 +50,18 @@ end
 
 let built = 0
 
+#[used]
 fun make_config() -> Config
   built += 1
   Config { host: "smtp.example" }
 end
 
+#[used]
 fun make_mailer(config: Config) -> Mailer
   SmtpMailer { host: config.host }
 end
 
+#[used]
 fun make_users(config: Config, mailer: Mailer) -> Users
   Users { config, mailer }
 end
@@ -74,14 +77,17 @@ fun make_counter() -> Counter
   Counter { n: built }
 end
 
+#[used]
 fun make_loop1(b: Loop2) -> Loop1
   Loop1 { x: 1 }
 end
 
+#[used]
 fun make_loop2(a: Loop1) -> Loop2
   Loop2 { y: 1 }
 end
 
+#[used]
 fun make_lonely(missing: Session) -> Lonely
   Lonely { z: 1 }
 end

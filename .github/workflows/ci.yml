@@ -33,5 +33,5 @@ jobs:
         run: qlang fmt --check
       - name: The API page is up to date
         run: |
-          qlang doc -o /tmp/API.md
+          qlang doc --require-levels -o /tmp/API.md
           diff -u API.md /tmp/API.md
