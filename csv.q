@@ -11,7 +11,7 @@ let rows = csv.parse("name,age\nana,31\n\"bob, jr\",27\n").unwrap()
 --"
 
 --" Reads CSV text separated by commas: one array of fields for each line. An empty line is a
-line with one empty field; a final new line does not make an extra line. `err` when a quoted
+line with one empty field; a final new line does not make an extra line; a byte order mark at the very start (Excel writes one) is skipped. `err` when a quoted
 field is never closed. --"
 fun parse(text: string) -> Result<array<array<string>>, Error>
   parse_with(text, ",")
@@ -27,7 +27,11 @@ fun parse_with(text: string, delimiter: string) -> Result<array<array<string>>, 
   let field = ""
   let chars = text.chars()
   let n = chars.len()
+  -- a file saved by Excel starts with a byte order mark (U+FEFF): it is not part of the first field
   let i = 0
+  if n > 0 and chars[0] == (Hex.decode("efbbbf") ?? "") then
+    i = 1
+  end
   let in_quotes = false
   let quoted = false
   let line = 1

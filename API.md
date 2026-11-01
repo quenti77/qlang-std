@@ -87,7 +87,7 @@ _Stability: **provisional**._
 
 ## `fun parse(text: string) -> Result<array<array<string>>, Error>`
 
-Reads CSV text separated by commas: one array of fields for each line. An empty line is a line with one empty field; a final new line does not make an extra line. `err` when a quoted field is never closed.
+Reads CSV text separated by commas: one array of fields for each line. An empty line is a line with one empty field; a final new line does not make an extra line; a byte order mark at the very start (Excel writes one) is skipped. `err` when a quoted field is never closed.
 
 ## `fun parse_with(text: string, delimiter: string) -> Result<array<array<string>>, Error>`
 
