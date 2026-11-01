@@ -164,10 +164,11 @@ passe et tâches est dans [`examples/tasks`](examples/tasks) ; le guide du site 
 Les annotations s'écrivent avec le nom du module (`web.Get`) : `Post`, `Delete`... sont des noms de
 modèles trop courants pour les prendre.
 
-### Ce que le paquet ne fait pas (encore)
+### Ce que le paquet ne fait pas
 
-ORM à relations, JWT tout fait, un courtier de messages pour des milliers de connexions WebSocket. Le
-serveur lui-même (`qlang serve`) reste derrière un proxy inverse pour TLS.
+Un ORM complet (il y a des relations sans N+1, `web/relations.q`, et un constructeur de requêtes, mais pas de modèles qui se
+sauvent eux-mêmes), un courtier de messages pour des milliers de connexions WebSocket, et le TLS : le serveur lui-même
+(`qlang serve`) reste derrière un proxy inverse.
 
 La documentation de chaque fonction est dans [API.md](API.md) (générée par `qlang doc`).
 
@@ -192,12 +193,12 @@ qlang test          # tous les tests (fichiers *_test.q)
 qlang doc -o API.md # régénérer l'API
 ```
 
-## Pas encore
+## Limites connues
 
-- **YAML** : un sous-ensemble courant reste à décider ; le format complet est très long à lire
-  correctement.
-- **Sessions côté serveur** (base, Redis) : la session est un cookie signé, limité à environ 3 Ko et lisible par
-  l'utilisateur (signé, pas chiffré) ; ni identifiant côté serveur à révoquer, ni partage entre appareils.
+- **YAML** : un sous-ensemble courant (blocs, collections en ligne, `|` et `>`, commentaires, plusieurs documents) ; sans
+  ancres, alias ni étiquettes.
+- **Sessions** : par défaut un cookie signé (environ 3 Ko, lisible par l'utilisateur : signé, pas chiffré) ; pour une session
+  qu'on peut révoquer ou partager entre appareils, `Options { store: ... }` (base de données, Redis), voir `web/session.q`.
 
 ## Licence
 
