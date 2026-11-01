@@ -155,7 +155,7 @@ fun test_a_job_asks_for_its_own_tries_and_backoff()
     "no"
   end)
   queue.push(Patient { n: 1 }).unwrap()
-  for i in 0..4 do
+  for _i in 0..4 do
     assert_eq(queue.work_one().unwrap(), true)
     clock[0] += 5500
   end

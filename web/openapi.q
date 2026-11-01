@@ -292,7 +292,6 @@ end
 fun openapi(app: web.App, title: string, version: string) -> Json
   let schemas = Schemas { found: {} }
   let paths: map<string, Json> = {}
-  let order: array<string> = []
   for route in app.route_list() do
     let c = route.source
     if c == none then

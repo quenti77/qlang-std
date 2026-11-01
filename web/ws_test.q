@@ -61,10 +61,6 @@ fun test_the_bus_shares_messages_between_connections_through_the_database()
   bus.clock = fun() -> int clock[0] end
   bus.install().unwrap()
   bus.publish("news", "old").unwrap()
-  let handler = WebSocketHandler {
-    on_message: fun(c: WebSocket, m: WsMessage) bus.publish("news", m.text ?? "").unwrap() end,
-    on_tick: fun(c: WebSocket) bus.deliver(c, "news") end,
-  }
   let make = fun(id: string) -> WebSocket
     WebSocket { id: id, request: Request { method: "GET", url: "/", path: "/" } }
   end

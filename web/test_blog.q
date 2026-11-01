@@ -1,5 +1,5 @@
 -- A small application for the tests of `app.q`: services, then handlers.
-import NotBlank, Length, Min, Email from "validate.q"
+import NotBlank, Length, Min from "validate.q"
 import Scoped from "container.q"
 
 struct Post

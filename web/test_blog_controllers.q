@@ -1,5 +1,5 @@
 import "app.q" as web
-import Posts, Post, NewPost, Clock, Me from "test_blog.q"
+import Posts, Post, NewPost, Me from "test_blog.q"
 
 #[web.Get("/posts")]
 fun list(posts: Posts, #[web.Query] limit: int?) -> array<Post>

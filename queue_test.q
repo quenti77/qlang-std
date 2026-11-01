@@ -275,7 +275,7 @@ fun test_rate_limited_lets_a_number_of_jobs_through_per_window()
     queue.push(Mail { to: "{i}" }).unwrap()
   end
   -- four are ready: two run, two are released for the next window
-  for i in 0..4 do
+  for _i in 0..4 do
     queue.work_one().unwrap()
   end
   assert_eq(ran[0], 2)
