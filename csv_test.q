@@ -65,3 +65,9 @@ fun test_writing_then_reading_gives_the_rows_back()
   let rows = [["id", "note"], ["1", "plain"], ["2", "with, comma"], ["3", "quote \" and\nnewline"], ["4", ""]]
   assert_eq(assert_ok(csv.parse(csv.to_text(rows))), rows)
 end
+
+fun test_a_byte_order_mark_at_the_start_is_not_part_of_the_first_field()
+  let text = (Hex.decode("efbbbf") ?? "") + "nom,ville\r\nAna,Lyon\r\n"
+  assert_eq(csv.parse(text).unwrap(), [["nom", "ville"], ["Ana", "Lyon"]])
+  assert_eq(csv.parse_records(text).unwrap()[0]["nom"], "Ana")
+end
