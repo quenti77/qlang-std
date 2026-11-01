@@ -199,7 +199,7 @@ fun double_quoted(cur: Cursor) -> Result<string, Error>
     elseif e == "x" or e == "u" or e == "U" then
       let size = if e == "x" then 2 elseif e == "u" then 4 else 8 end
       let digits = ""
-      for i in 0..size do
+      for _i in 0..size do
         digits += cur.peek()
         cur.pos += 1
       end

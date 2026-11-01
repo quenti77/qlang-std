@@ -104,7 +104,7 @@ fun test_the_session_identifier_changes_when_signing_in()
   let w = world(acc.Options {})
   let client = testing.Client.new(w.app)
   client.post_json("/auth/register", credentials("ada@example.org", "correct horse")).expect_status(201)
-  let before = client.get("/auth/me")
+  client.get("/auth/me")
   let seen = client.cookies["qs"] ?? ""
   client.post_json("/auth/login", credentials("ada@example.org", "correct horse")).expect_status(200)
   assert(client.cookies["qs"] != seen)

@@ -31,6 +31,8 @@ jobs:
       - run: qlang test
       - name: The code is laid out (qlang fmt)
         run: qlang fmt --check
+      - name: No unused code, and no function more tangled than today's worst (qlang lint)
+        run: qlang lint --max-complexity 47
       - name: The API page is up to date
         run: |
           qlang doc --require-levels -o /tmp/API.md

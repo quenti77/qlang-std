@@ -134,7 +134,7 @@ fun escape_char(r: Reader) -> Result<string, Error>
   elseif c == "u" or c == "U" then
     let size = if c == "u" then 4 else 8 end
     let digits = ""
-    for i in 0..size do
+    for _i in 0..size do
       digits += r.next()
     end
     let code = hex_value(digits)

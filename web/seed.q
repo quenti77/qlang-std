@@ -114,7 +114,7 @@ impl Factory
   --" `n` rows, not saved. --"
   public fun make_many(self, n: int) -> array<map<string, Json>>
     let rows: array<map<string, Json>> = []
-    for i in 0..n do
+    for _i in 0..n do
       rows.push(self.make())
     end
     rows
@@ -143,7 +143,7 @@ impl Factory
     let factory = self
     db.transaction(fun() -> Result<array<map<string, Json>>, Error>
       let rows: array<map<string, Json>> = []
-      for i in 0..n do
+      for _i in 0..n do
         let made = factory.create(db)
         if made.is_err() then
           return Result<array<map<string, Json>>, Error>.Err(made.unwrap_err())

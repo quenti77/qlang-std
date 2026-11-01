@@ -206,7 +206,7 @@ end
 fun parse(source: string) -> Result<array<Node>, Error>
   let tokens = tokenize(source)?
   let p = Parser { tokens: tokens, pos: 0 }
-  let (nodes, ended) = p.block([])?
+  let (nodes, _ended) = p.block([])?
   Ok(nodes)
 end
 
@@ -323,7 +323,7 @@ impl Renderer
             text = html_escape(text)
           end
           self.out[] = text
-        case If(path, negate, then_body, else_body, line) then
+        case If(path, negate, then_body, else_body, _line) then
           let yes = truthy(lookup(path, root, locals))
           if negate then
             yes = not yes
