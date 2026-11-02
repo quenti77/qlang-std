@@ -26,48 +26,48 @@ import "app.q" as web
 
 --" The scheme the visitor used (`https` or `http`), as the proxy says it; `http` without the header. --"
 fun scheme(req: Request) -> string
-  let proto = req.header("x-forwarded-proto")
-  if proto == none then
-    return "http"
-  end
-  -- several proxies in a row: the first one saw the visitor
-  let first = proto.split(",")[0].trim().lower()
-  if first == "https" then "https" else "http" end
+    let proto = req.header("x-forwarded-proto")
+    if proto == none then
+        return "http"
+    end
+    -- several proxies in a row: the first one saw the visitor
+    let first = proto.split(",")[0].trim().lower()
+    if first == "https" then "https" else "http" end
 end
 
 fun is_https(req: Request) -> bool
-  scheme(req) == "https"
+    scheme(req) == "https"
 end
 
 --" The address of the visitor: the first one of `X-Forwarded-For`, or `none` without the header. --"
 fun client_ip(req: Request) -> string?
-  let forwarded = req.header("x-forwarded-for")
-  if forwarded == none then
-    return none
-  end
-  let first = forwarded.split(",")[0].trim()
-  if first.is_empty() then none else first end
+    let forwarded = req.header("x-forwarded-for")
+    if forwarded == none then
+        return none
+    end
+    let first = forwarded.split(",")[0].trim()
+    if first.is_empty() then none else first end
 end
 
 --" The host the visitor asked for (`X-Forwarded-Host`, else `Host`). --"
 fun host(req: Request) -> string?
-  req.header("x-forwarded-host") ?? req.header("host")
+    req.header("x-forwarded-host") ?? req.header("host")
 end
 
 --" Sends a `301` to the `https://` address of every request the proxy received in plain HTTP. A
 request that did not come through a proxy (no `X-Forwarded-Proto`) is left alone, so that
 the program still works on your machine. --"
 fun redirect_to_https() -> web.Middleware
-  fun(req: Request, next: web.Handler) -> Response
-    let proto = req.header("x-forwarded-proto")
-    if proto != none and not is_https(req) then
-      let h = host(req)
-      if h != none then
-        return Response.redirect("https://{h}{req.url}").with_status(301)
-      end
+    fun(req: Request, next: web.Handler) -> Response
+        let proto = req.header("x-forwarded-proto")
+        if proto != none and not is_https(req) then
+            let h = host(req)
+            if h != none then
+                return Response.redirect("https://{h}{req.url}").with_status(301)
+            end
+        end
+        next(req)
     end
-    next(req)
-  end
 end
 
 export scheme, is_https, client_ip, host, redirect_to_https

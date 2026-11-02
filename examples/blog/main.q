@@ -14,12 +14,12 @@ app.use(mw.security_headers())
 
 let problems = app.validate()
 if not problems.is_empty() then
-  for p in problems do
-    Log.error(p)
-  end
-  panic("the application is not wired correctly")
+    for p in problems do
+        Log.error(p)
+    end
+    panic("the application is not wired correctly")
 end
 
 fun handle(req: Request) -> Response
-  app.handle(req)
+    app.handle(req)
 end

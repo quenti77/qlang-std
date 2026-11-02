@@ -11,25 +11,25 @@ const PAGE = fs.read("examples/chat/index.html").unwrap()
 
 -- How the messages travel between workers: Redis if CHAT_REDIS is set, else a table in the database.
 struct Transport
-  public relay: ws.Relay
-  public publish: fun(string)
+    public relay: ws.Relay
+    public publish: fun(string)
 end
 
 fun connect(hub: ws.Hub) -> Transport
-  let redis_url = env.get("CHAT_REDIS")
-  if redis_url != none then
-    let bus = ws.RedisBus.new(Redis.connect(redis_url).unwrap(), "chat:")
-    return Transport {
-      relay: ws.Relay.with_feed(ws.RedisFeed.open(redis_url, "chat:").unwrap(), hub, 50),
-      publish: fun(text: string) bus.publish("lobby", text) end,
+    let redis_url = env.get("CHAT_REDIS")
+    if redis_url != none then
+        let bus = ws.RedisBus.new(Redis.connect(redis_url).unwrap(), "chat:")
+        return Transport {
+            relay: ws.Relay.with_feed(ws.RedisFeed.open(redis_url, "chat:").unwrap(), hub, 50),
+            publish: fun(text: string) bus.publish("lobby", text) end,
+        }
+    end
+    let bus = ws.Bus.new(Db.connect(env.get("CHAT_DB") ?? "sqlite://:memory:").unwrap(), "sqlite")
+    bus.install().unwrap()
+    Transport {
+        relay: ws.Relay.new(bus, hub, 250),
+        publish: fun(text: string) bus.publish("lobby", text) end,
     }
-  end
-  let bus = ws.Bus.new(Db.connect(env.get("CHAT_DB") ?? "sqlite://:memory:").unwrap(), "sqlite")
-  bus.install().unwrap()
-  Transport {
-    relay: ws.Relay.new(bus, hub, 250),
-    publish: fun(text: string) bus.publish("lobby", text) end,
-  }
 end
 
 -- the connections of this worker, and one read of the messages for all of them
@@ -41,25 +41,25 @@ let publish = transport.publish
 let app = web.App.new([])
 app.get("/", fun(req: Request) -> Response Response.html(PAGE) end)
 app.get("/ws", fun(req: Request) -> Response
-  let name = req.query["name"] ?? "anon"
-  Response.websocket(WebSocketHandler {
-    tick_ms: 50,
-    on_open: fun(c: WebSocket)
-      hub.join("lobby", c)
-      relay.watch("lobby")
-      publish("{name} joined")
-    end,
-    on_message: fun(c: WebSocket, m: WsMessage)
-      let text = (m.text ?? "").trim()
-      if not text.is_empty() and text.len() <= 500 then
-        publish("{name}: {text}")
-      end
-    end,
-    on_tick: fun(c: WebSocket) relay.pump() end,
-    on_close: fun(c: WebSocket) hub.leave(c) end,
-  })
+    let name = req.query["name"] ?? "anon"
+    Response.websocket(WebSocketHandler {
+        tick_ms: 50,
+        on_open: fun(c: WebSocket)
+            hub.join("lobby", c)
+            relay.watch("lobby")
+            publish("{name} joined")
+        end,
+        on_message: fun(c: WebSocket, m: WsMessage)
+            let text = (m.text ?? "").trim()
+            if not text.is_empty() and text.len() <= 500 then
+                publish("{name}: {text}")
+            end
+        end,
+        on_tick: fun(c: WebSocket) relay.pump() end,
+        on_close: fun(c: WebSocket) hub.leave(c) end,
+    })
 end)
 
 fun handle(req: Request) -> Response
-  app.handle(req)
+    app.handle(req)
 end

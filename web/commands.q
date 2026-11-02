@@ -39,145 +39,145 @@ import "../schedule.q" as sch
 
 --" The migrations of the application, as a service. --"
 struct Migrations
-  public list: array<mig.Migration>
+    public list: array<mig.Migration>
 end
 
 --" The seeders of the application, as a service (for `db:seed`). --"
 struct Seeders
-  public list: array<seed.Seeder>
+    public list: array<seed.Seeder>
 end
 
 #[cli.Command("routes:list", "Lists the routes")]
 fun routes_list(app: web.App, console: cli.Console)
-  let rows: array<array<string>> = []
-  for r in app.route_list() do
-    let source = r.source
-    rows.push([r.method, r.pattern, if source == none then "(function)" else source.name end])
-  end
-  console.table(["method", "path", "handler"], rows)
+    let rows: array<array<string>> = []
+    for r in app.route_list() do
+        let source = r.source
+        rows.push([r.method, r.pattern, if source == none then "(function)" else source.name end])
+    end
+    console.table(["method", "path", "handler"], rows)
 end
 
 #[cli.Command("db:migrate", "Applies the migrations that were not yet")]
 fun db_migrate(migrator: mig.Migrator, migrations: Migrations, console: cli.Console) -> Result<int, Error>
-  let done = migrator.run(migrations.list)
-  if done.is_err() then
-    return Result<int, Error>.Err(done.unwrap_err())
-  end
-  let ids = done.unwrap()
-  if ids.len() == 0 then
-    console.line("Nothing to migrate")
-  end
-  for id in ids do
-    console.line("Migrated {id}")
-  end
-  Result<int, Error>.Ok(0)
+    let done = migrator.run(migrations.list)
+    if done.is_err() then
+        return Result<int, Error>.Err(done.unwrap_err())
+    end
+    let ids = done.unwrap()
+    if ids.len() == 0 then
+        console.line("Nothing to migrate")
+    end
+    for id in ids do
+        console.line("Migrated {id}")
+    end
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("db:rollback", "Undoes the last migrations")]
 fun db_rollback(migrator: mig.Migrator, migrations: Migrations, console: cli.Console, #[cli.Opt(description: "how many migrations to undo")] steps: int?) -> Result<int, Error>
-  let done = migrator.rollback(migrations.list, steps ?? 1)
-  if done.is_err() then
-    return Result<int, Error>.Err(done.unwrap_err())
-  end
-  for id in done.unwrap() do
-    console.line("Rolled back {id}")
-  end
-  Result<int, Error>.Ok(0)
+    let done = migrator.rollback(migrations.list, steps ?? 1)
+    if done.is_err() then
+        return Result<int, Error>.Err(done.unwrap_err())
+    end
+    for id in done.unwrap() do
+        console.line("Rolled back {id}")
+    end
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("db:status", "Shows which migrations are applied")]
 fun db_status(migrator: mig.Migrator, migrations: Migrations, console: cli.Console) -> Result<int, Error>
-  let found = migrator.status(migrations.list)
-  if found.is_err() then
-    return Result<int, Error>.Err(found.unwrap_err())
-  end
-  let rows: array<array<string>> = []
-  for s in found.unwrap() do
-    rows.push([s.id, if s.applied then "applied" else "pending" end])
-  end
-  console.table(["migration", "state"], rows)
-  Result<int, Error>.Ok(0)
+    let found = migrator.status(migrations.list)
+    if found.is_err() then
+        return Result<int, Error>.Err(found.unwrap_err())
+    end
+    let rows: array<array<string>> = []
+    for s in found.unwrap() do
+        rows.push([s.id, if s.applied then "applied" else "pending" end])
+    end
+    console.table(["migration", "state"], rows)
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("db:seed", "Fills the database with the seeders")]
 fun db_seed(migrator: mig.Migrator, seeders: Seeders, console: cli.Console, #[cli.Opt(description: "run only the seeder with this name")] only: string?) -> Result<int, Error>
-  let chosen = seeders.list
-  if only != none then
-    chosen = seeders.list.filter(fun(s: seed.Seeder) -> bool s.name == only end)
-    if chosen.is_empty() then
-      console.error("no seeder called {only}")
-      return Result<int, Error>.Ok(1)
+    let chosen = seeders.list
+    if only != none then
+        chosen = seeders.list.filter(fun(s: seed.Seeder) -> bool s.name == only end)
+        if chosen.is_empty() then
+            console.error("no seeder called {only}")
+            return Result<int, Error>.Ok(1)
+        end
     end
-  end
-  let ran = seed.run_seeders(migrator.db, chosen)
-  if ran.is_err() then
-    return Result<int, Error>.Err(ran.unwrap_err())
-  end
-  for name in ran.unwrap() do
-    console.line("Seeded {name}")
-  end
-  Result<int, Error>.Ok(0)
+    let ran = seed.run_seeders(migrator.db, chosen)
+    if ran.is_err() then
+        return Result<int, Error>.Err(ran.unwrap_err())
+    end
+    for name in ran.unwrap() do
+        console.line("Seeded {name}")
+    end
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("locale:missing", "Lists the messages a language still lacks")]
 fun locale_missing(#[cli.Arg(description: "the language to check")] locale: string, translator: i18n.Translator, console: cli.Console) -> int
-  let lacking = translator.missing(locale)
-  for key in lacking do
-    console.line(key)
-  end
-  if lacking.len() > 0 then 1 else 0 end
+    let lacking = translator.missing(locale)
+    for key in lacking do
+        console.line(key)
+    end
+    if lacking.len() > 0 then 1 else 0 end
 end
 
 #[cli.Command("queue:work", "Does the jobs of the queue")]
 fun queue_work(queue: jobs.Queue, console: cli.Console, #[cli.Opt(description: "stop when no job is due")] once: bool, #[cli.Opt(name: "max-jobs", description: "stop after this many jobs")] max_jobs: int?, #[cli.Opt(name: "max-time", description: "stop after this many seconds")] max_time: int?, #[cli.Opt(description: "milliseconds between two looks (database queue)")] sleep: int?, #[cli.Opt(description: "the queues to serve, the most important first: high,default")] queues: string?) -> Result<int, Error>
-  let names: array<string> = []
-  for n in (queues ?? "").split(",") do
-    if n.trim() != "" then
-      names.push(n.trim())
+    let names: array<string> = []
+    for n in (queues ?? "").split(",") do
+        if n.trim() != "" then
+            names.push(n.trim())
+        end
     end
-  end
-  let done = queue.work_with(jobs.WorkOptions { once: once, max_jobs: max_jobs ?? 0, max_seconds: max_time ?? 0, sleep_ms: sleep ?? 1000, queues: names })
-  if done.is_err() then
-    return Result<int, Error>.Err(done.unwrap_err())
-  end
-  console.line("{done.unwrap()} job(s) done")
-  Result<int, Error>.Ok(0)
+    let done = queue.work_with(jobs.WorkOptions { once: once, max_jobs: max_jobs ?? 0, max_seconds: max_time ?? 0, sleep_ms: sleep ?? 1000, queues: names })
+    if done.is_err() then
+        return Result<int, Error>.Err(done.unwrap_err())
+    end
+    console.line("{done.unwrap()} job(s) done")
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("queue:failed", "Lists the jobs that gave up")]
 fun queue_failed(queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
-  let found = queue.failed()
-  if found.is_err() then
-    return Result<int, Error>.Err(found.unwrap_err())
-  end
-  console.table(["id", "queue", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> [j.id, j.queue, j.kind, "{j.attempts}", j.error] end))
-  Result<int, Error>.Ok(0)
+    let found = queue.failed()
+    if found.is_err() then
+        return Result<int, Error>.Err(found.unwrap_err())
+    end
+    console.table(["id", "queue", "type", "attempts", "error"], found.unwrap().map(fun(j: jobs.FailedJob) -> array<string> [j.id, j.queue, j.kind, "{j.attempts}", j.error] end))
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("queue:retry", "Puts a failed job back in the queue")]
 fun queue_retry(#[cli.Arg(description: "the id shown by queue:failed")] id: string, queue: jobs.Queue, console: cli.Console) -> Result<int, Error>
-  let again = queue.retry_failed(id)
-  if again.is_err() then
-    return Result<int, Error>.Err(again.unwrap_err())
-  end
-  if not again.unwrap() then
-    console.error("no failed job {id}")
-    return Result<int, Error>.Ok(1)
-  end
-  console.line("job {id} is back in the queue")
-  Result<int, Error>.Ok(0)
+    let again = queue.retry_failed(id)
+    if again.is_err() then
+        return Result<int, Error>.Err(again.unwrap_err())
+    end
+    if not again.unwrap() then
+        console.error("no failed job {id}")
+        return Result<int, Error>.Ok(1)
+    end
+    console.line("job {id} is back in the queue")
+    Result<int, Error>.Ok(0)
 end
 
 #[cli.Command("schedule:run", "Runs the scheduled tasks that are due this minute")]
 fun schedule_run(plan: sch.Schedule, console: cli.Console) -> int
-  console.line("{plan.run_due()} task(s) run")
-  0
+    console.line("{plan.run_due()} task(s) run")
+    0
 end
 
 #[cli.Command("schedule:work", "Runs the scheduled tasks as they come due")]
 fun schedule_work(plan: sch.Schedule) -> int
-  plan.work()
-  0
+    plan.work()
+    0
 end
 
 export Migrations, Seeders

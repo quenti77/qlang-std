@@ -8,7 +8,7 @@ import "../../web/middleware.q" as mw
 import "../../queue.q" as jobs
 
 struct Hello
-  public name: string
+    public name: string
 end
 
 let redis_url = env.get("REDIS_URL")
@@ -21,8 +21,8 @@ queue.install().unwrap()
 let app = web.App.new([])
 app.get("/", fun(req: Request) -> Response Response.text("hello from qlang") end)
 app.post("/hello/:name", fun(req: Request) -> Response
-  queue.push(Hello { name: req.params["name"] ?? "?" }).unwrap()
-  Response.text("queued").with_status(202)
+    queue.push(Hello { name: req.params["name"] ?? "?" }).unwrap()
+    Response.text("queued").with_status(202)
 end)
 
 -- what an operator needs
@@ -32,11 +32,11 @@ health.mount(app, "/health")
 let metrics = mt.Metrics.new(cache, app).with_queue(queue)
 let token = env.get("METRICS_TOKEN") ?? ""
 metrics.mount(app, "/metrics", fun(req: Request) -> Response?
-  if token != "" and Crypto.equal(req.headers["authorization"] ?? "", "Bearer {token}") then none else Response.text("unauthorized").with_status(401) end
+    if token != "" and Crypto.equal(req.headers["authorization"] ?? "", "Bearer {token}") then none else Response.text("unauthorized").with_status(401) end
 end)
 app.use(metrics.middleware())
 app.use(mw.logging())
 
 fun handle(req: Request) -> Response
-  app.handle(req)
+    app.handle(req)
 end

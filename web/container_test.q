@@ -3,146 +3,146 @@ import "test_services.q" as s
 import "test_autowire.q" as aw
 
 fun good() -> web.Container
-  let app = web.Container.new([])
-  app
+    let app = web.Container.new([])
+    app
 end
 
 fun test_services_are_built_from_the_types_providers_return()
-  let app = web.Container.new(Reflect.callables(s))
-  let users = app.get<s.Users>().unwrap()
-  assert_eq(users.config.host, "smtp.example")
-  assert_eq(users.mailer.send("ana"), "smtp.example -> ana")
+    let app = web.Container.new(Reflect.callables(s))
+    let users = app.get<s.Users>().unwrap()
+    assert_eq(users.config.host, "smtp.example")
+    assert_eq(users.mailer.send("ana"), "smtp.example -> ana")
 end
 
 fun test_a_singleton_is_built_once()
-  let app = web.Container.new(Reflect.callables(s))
-  let a = app.get<s.Config>().unwrap()
-  let b = app.get<s.Config>().unwrap()
-  assert_eq(a.host, b.host)
-  app.get<s.Users>().unwrap()
-  assert_eq(s.times_built(), 1)
+    let app = web.Container.new(Reflect.callables(s))
+    let a = app.get<s.Config>().unwrap()
+    let b = app.get<s.Config>().unwrap()
+    assert_eq(a.host, b.host)
+    app.get<s.Users>().unwrap()
+    assert_eq(s.times_built(), 1)
 end
 
 fun test_a_transient_service_is_built_every_time()
-  let app = web.Container.new(Reflect.callables(s))
-  let a = app.get<s.Counter>().unwrap()
-  let b = app.get<s.Counter>().unwrap()
-  assert(a.n != b.n)
+    let app = web.Container.new(Reflect.callables(s))
+    let a = app.get<s.Counter>().unwrap()
+    let b = app.get<s.Counter>().unwrap()
+    assert(a.n != b.n)
 end
 
 fun test_a_trait_can_be_asked_for_by_its_own_name()
-  let app = web.Container.new(Reflect.callables(s))
-  let mailer = app.get<s.Mailer>().unwrap()
-  assert_eq(mailer.send("bo"), "smtp.example -> bo")
+    let app = web.Container.new(Reflect.callables(s))
+    let mailer = app.get<s.Mailer>().unwrap()
+    assert_eq(mailer.send("bo"), "smtp.example -> bo")
 end
 
 fun test_a_ready_value_replaces_a_provider()
-  let app = web.Container.new(Reflect.callables(s))
-  app.set(s.Config { host: "test.local" })
-  assert_eq(app.get<s.Users>().unwrap().config.host, "test.local")
+    let app = web.Container.new(Reflect.callables(s))
+    app.set(s.Config { host: "test.local" })
+    assert_eq(app.get<s.Users>().unwrap().config.host, "test.local")
 end
 
 fun test_scoped_services_belong_to_one_request()
-  let app = web.Container.new(Reflect.callables(s))
-  assert(app.get<s.Cart>().is_err())
-  let one = app.child()
-  one.set(s.Session { id: 1 })
-  let two = app.child()
-  two.set(s.Session { id: 2 })
-  assert_eq(one.get<s.Cart>().unwrap().session.id, 1)
-  assert_eq(two.get<s.Cart>().unwrap().session.id, 2)
-  assert_eq(one.get<s.Cart>().unwrap().session.id, 1)
-  -- singletons are shared by all the requests
-  assert_eq(one.get<s.Config>().unwrap().host, two.get<s.Config>().unwrap().host)
-  assert_eq(s.times_built(), 1)
+    let app = web.Container.new(Reflect.callables(s))
+    assert(app.get<s.Cart>().is_err())
+    let one = app.child()
+    one.set(s.Session { id: 1 })
+    let two = app.child()
+    two.set(s.Session { id: 2 })
+    assert_eq(one.get<s.Cart>().unwrap().session.id, 1)
+    assert_eq(two.get<s.Cart>().unwrap().session.id, 2)
+    assert_eq(one.get<s.Cart>().unwrap().session.id, 1)
+    -- singletons are shared by all the requests
+    assert_eq(one.get<s.Config>().unwrap().host, two.get<s.Config>().unwrap().host)
+    assert_eq(s.times_built(), 1)
 end
 
 fun test_a_missing_service_is_an_error_that_names_who_needed_it()
-  let app = web.Container.new(Reflect.callables(s))
-  let r = app.get<s.Lonely>()
-  assert(r.is_err())
-  assert_eq(r.unwrap_err().message, "no service of type Session (needed by Lonely)")
-  assert(not app.has<s.Session>())
-  assert(app.has<s.Config>())
+    let app = web.Container.new(Reflect.callables(s))
+    let r = app.get<s.Lonely>()
+    assert(r.is_err())
+    assert_eq(r.unwrap_err().message, "no service of type Session (needed by Lonely)")
+    assert(not app.has<s.Session>())
+    assert(app.has<s.Config>())
 end
 
 fun test_a_service_that_needs_itself_is_caught()
-  let app = web.Container.new(Reflect.callables(s))
-  let r = app.get<s.Loop1>()
-  assert(r.is_err())
-  assert(r.unwrap_err().message.contains("Loop1 -> Loop2 -> Loop1"))
+    let app = web.Container.new(Reflect.callables(s))
+    let r = app.get<s.Loop1>()
+    assert(r.is_err())
+    assert(r.unwrap_err().message.contains("Loop1 -> Loop2 -> Loop1"))
 end
 
 fun test_validate_reports_every_mistake_before_the_first_request()
-  let app = web.Container.new(Reflect.callables(s))
-  let problems = app.validate()
-  assert(problems.contains("Lonely needs Session: no provider"))
-  assert(problems.any(fun(p: string) -> bool p.starts_with("cycle: ") end))
-  -- telling the container that requests bring a Session removes the first one
-  app.expects<s.Session>()
-  assert(not app.validate().contains("Lonely needs Session: no provider"))
+    let app = web.Container.new(Reflect.callables(s))
+    let problems = app.validate()
+    assert(problems.contains("Lonely needs Session: no provider"))
+    assert(problems.any(fun(p: string) -> bool p.starts_with("cycle: ") end))
+    -- telling the container that requests bring a Session removes the first one
+    app.expects<s.Session>()
+    assert(not app.validate().contains("Lonely needs Session: no provider"))
 end
 
 fun test_a_singleton_may_not_hold_a_request_service()
-  let app = web.Container.new(Reflect.callables(s))
-  app.expects<s.Session>()
-  assert(app.validate().contains("Lonely is a singleton but needs Session, which changes with every request"))
+    let app = web.Container.new(Reflect.callables(s))
+    app.expects<s.Session>()
+    assert(app.validate().contains("Lonely is a singleton but needs Session, which changes with every request"))
 end
 
 fun autowired() -> web.Container
-  let app = web.Container.new(Reflect.callables(aw))
-  app.services(Reflect.constructors(aw))
-  app.bind<aw.Mailer, aw.SmtpMailer>()
-  app
+    let app = web.Container.new(Reflect.callables(aw))
+    app.services(Reflect.constructors(aw))
+    app.bind<aw.Mailer, aw.SmtpMailer>()
+    app
 end
 
 fun test_a_marked_structure_is_built_from_its_fields()
-  let app = autowired()
-  let notifier = app.get<aw.Notifier>().unwrap()
-  assert_eq(notifier.welcome("ana"), "smtp.example -> ana")
+    let app = autowired()
+    let notifier = app.get<aw.Notifier>().unwrap()
+    assert_eq(notifier.welcome("ana"), "smtp.example -> ana")
 end
 
 fun test_a_trait_is_bound_to_an_implementation()
-  let app = autowired()
-  let mailer = app.get<aw.Mailer>().unwrap()
-  assert_eq(mailer.send("bo"), "smtp.example -> bo")
+    let app = autowired()
+    let mailer = app.get<aw.Mailer>().unwrap()
+    assert_eq(mailer.send("bo"), "smtp.example -> bo")
 end
 
 fun test_a_structure_that_is_not_marked_is_not_a_service()
-  let app = autowired()
-  assert(app.get<aw.Plain>().is_err())
-  assert(not app.has<aw.Plain>())
+    let app = autowired()
+    assert(app.get<aw.Plain>().is_err())
+    assert(not app.has<aw.Plain>())
 end
 
 fun test_a_marked_structure_may_be_scoped()
-  let app = autowired()
-  app.expects<aw.Visitor>()
-  assert(app.validate().is_empty())
-  let request = app.child()
-  request.set(aw.Visitor { name: "ada" })
-  assert_eq(request.get<aw.Greeter>().unwrap().hello(), "hello ada")
-  assert(app.get<aw.Greeter>().is_err())
+    let app = autowired()
+    app.expects<aw.Visitor>()
+    assert(app.validate().is_empty())
+    let request = app.child()
+    request.set(aw.Visitor { name: "ada" })
+    assert_eq(request.get<aw.Greeter>().unwrap().hello(), "hello ada")
+    assert(app.get<aw.Greeter>().is_err())
 end
 
 fun test_services_of_keeps_only_the_marked_structures()
-  let marked = web.services_of(Reflect.constructors(aw))
-  let names = marked.map(fun(c: Callable) -> string c.name end)
-  names.sort()
-  assert_eq(names, ["Greeter", "Notifier", "SmtpMailer"])
-  let app = web.Container.new(Reflect.callables(aw).concat(marked))
-  assert(app.has<aw.Notifier>())
+    let marked = web.services_of(Reflect.constructors(aw))
+    let names = marked.map(fun(c: Callable) -> string c.name end)
+    names.sort()
+    assert_eq(names, ["Greeter", "Notifier", "SmtpMailer"])
+    let app = web.Container.new(Reflect.callables(aw).concat(marked))
+    assert(app.has<aw.Notifier>())
 end
 
 fun test_validate_sees_a_missing_field_service()
-  let app = web.Container.new([])
-  app.services(Reflect.constructors(aw))
-  let problems = app.validate()
-  assert(problems.len() > 0)
-  assert(problems.any(fun(p: string) -> bool p.contains("Config") end))
+    let app = web.Container.new([])
+    app.services(Reflect.constructors(aw))
+    let problems = app.validate()
+    assert(problems.len() > 0)
+    assert(problems.any(fun(p: string) -> bool p.contains("Config") end))
 end
 
 fun test_a_ready_value_feeds_the_services_built_from_fields()
-  let app = autowired()
-  app.set(aw.Config { host: "test.local" })
-  assert_eq(app.get<aw.Mailer>().unwrap().send("cy"), "test.local -> cy")
+    let app = autowired()
+    app.set(aw.Config { host: "test.local" })
+    assert_eq(app.get<aw.Mailer>().unwrap().send("cy"), "test.local -> cy")
 end

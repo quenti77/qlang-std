@@ -7,7 +7,7 @@ let redis_url = env.get("REDIS_URL")
 let cache = if redis_url == none then cc.Cache.memory() else cc.Cache.redis(Redis.connect(redis_url).unwrap(), "schedule") end
 let plan = sch.Schedule.new(cache)
 plan.every_minutes("heartbeat", 1, fun() -> string?
-  Log.info("scheduler is alive")
-  none
+    Log.info("scheduler is alive")
+    none
 end)
 plan.work()
