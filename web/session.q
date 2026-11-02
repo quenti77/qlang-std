@@ -40,371 +40,371 @@ import "cache.q" as cache
 
 --" The data of one visitor. --"
 struct Session
-  public data: map<string, string>
-  public changed: bool
-  public fresh: bool
-  --" Set by `regenerate`: with a server-side store, the middleware then gives the data a new identifier. --"
-  public rotated: bool = false
+    public data: map<string, string>
+    public changed: bool
+    public fresh: bool
+    --" Set by `regenerate`: with a server-side store, the middleware then gives the data a new identifier. --"
+    public rotated: bool = false
 end
 
 impl Session
-  --" A value, or `none`. --"
-  public fun get(self, key: string) -> string?
-    self.data[key]
-  end
-
-  --" Remembers a value. --"
-  public fun set(self, key: string, value: string)
-    self.data[key] = value
-    self.changed = true
-  end
-
-  --" Forgets a value. --"
-  public fun remove(self, key: string)
-    if self.data[key] != none then
-      self.data.remove(key)
-      self.changed = true
+    --" A value, or `none`. --"
+    public fun get(self, key: string) -> string?
+        self.data[key]
     end
-  end
 
-  --" Forgets everything (log out). --"
-  public fun clear(self)
-    self.data = {}
-    self.changed = true
-  end
-
-  --" A message for the next request only (`"Saved"` after a form): read it with `flash`. --"
-  public fun flash_set(self, message: string)
-    self.set("_flash", message)
-  end
-
-  --" The message left by the previous request, and forgets it. --"
-  public fun flash(self) -> string?
-    let m = self.data["_flash"]
-    if m != none then
-      self.remove("_flash")
+    --" Remembers a value. --"
+    public fun set(self, key: string, value: string)
+        self.data[key] = value
+        self.changed = true
     end
-    m
-  end
 
-  --" The token that pages must send back with a form (made the first time). It panics if the
+    --" Forgets a value. --"
+    public fun remove(self, key: string)
+        if self.data[key] != none then
+            self.data.remove(key)
+            self.changed = true
+        end
+    end
+
+    --" Forgets everything (log out). --"
+    public fun clear(self)
+        self.data = {}
+        self.changed = true
+    end
+
+    --" A message for the next request only (`"Saved"` after a form): read it with `flash`. --"
+    public fun flash_set(self, message: string)
+        self.set("_flash", message)
+    end
+
+    --" The message left by the previous request, and forgets it. --"
+    public fun flash(self) -> string?
+        let m = self.data["_flash"]
+        if m != none then
+            self.remove("_flash")
+        end
+        m
+    end
+
+    --" The token that pages must send back with a form (made the first time). It panics if the
   system has no secure randomness: a token anyone could guess would protect nothing. --"
-  public fun csrf_token(self) -> string
-    let t = self.data["_csrf"]
-    if t != none then
-      return t
+    public fun csrf_token(self) -> string
+        let t = self.data["_csrf"]
+        if t != none then
+            return t
+        end
+        let token = Crypto.token(24).unwrap()
+        self.set("_csrf", token)
+        token
     end
-    let token = Crypto.token(24).unwrap()
-    self.set("_csrf", token)
-    token
-  end
 
-  --" The hidden field to put in a form: `<input type="hidden" name="_csrf" value="...">`. --"
-  public fun csrf_field(self) -> string
-    "<input type=\"hidden\" name=\"_csrf\" value=\"{self.csrf_token()}\">"
-  end
+    --" The hidden field to put in a form: `<input type="hidden" name="_csrf" value="...">`. --"
+    public fun csrf_field(self) -> string
+        "<input type=\"hidden\" name=\"_csrf\" value=\"{self.csrf_token()}\">"
+    end
 
-  --" A new identity for this visitor: call it when the user signs in or out, so that a token or
+    --" A new identity for this visitor: call it when the user signs in or out, so that a token or
   an identifier seen before cannot be used with the new session (session fixation). The CSRF token
   changes too. --"
-  public fun regenerate(self)
-    self.rotated = true
-    self.data.remove("_csrf")
-    self.data["_sid"] = Crypto.token(12).unwrap()
-    self.changed = true
-  end
-
-  --" An identifier of this session, stable until `regenerate` (usable as a key for logs or a
-  cache). --"
-  public fun id(self) -> string
-    let known = self.data["_sid"]
-    if known != none then
-      return known
+    public fun regenerate(self)
+        self.rotated = true
+        self.data.remove("_csrf")
+        self.data["_sid"] = Crypto.token(12).unwrap()
+        self.changed = true
     end
-    let made = Crypto.token(12).unwrap()
-    self.set("_sid", made)
-    made
-  end
 
-  --" Keeps what the user typed in a form for the next request only, to show it again after a
+    --" An identifier of this session, stable until `regenerate` (usable as a key for logs or a
+  cache). --"
+    public fun id(self) -> string
+        let known = self.data["_sid"]
+        if known != none then
+            return known
+        end
+        let made = Crypto.token(12).unwrap()
+        self.set("_sid", made)
+        made
+    end
+
+    --" Keeps what the user typed in a form for the next request only, to show it again after a
   validation error (redirect to the form, then `old("title")`). Fields called `password...`, `_csrf` or
   `secret...` are left out. --"
-  public fun flash_input(self, fields: map<string, string>)
-    let kept: map<string, string> = {}
-    for name in fields.keys() do
-      let lowered = name.lower()
-      if lowered.starts_with("password") or lowered.starts_with("secret") or lowered == "_csrf" then
-        continue
-      end
-      kept[name] = fields[name] ?? ""
+    public fun flash_input(self, fields: map<string, string>)
+        let kept: map<string, string> = {}
+        for name in fields.keys() do
+            let lowered = name.lower()
+            if lowered.starts_with("password") or lowered.starts_with("secret") or lowered == "_csrf" then
+                continue
+            end
+            kept[name] = fields[name] ?? ""
+        end
+        self.set("_old_next", Json.of(kept).to_text())
     end
-    self.set("_old_next", Json.of(kept).to_text())
-  end
 
-  --" A field of the previous request's form (see `flash_input`), or `none`. --"
-  public fun old(self, name: string) -> string?
-    let held = self.data["_old"]
-    if held == none then
-      return none
+    --" A field of the previous request's form (see `flash_input`), or `none`. --"
+    public fun old(self, name: string) -> string?
+        let held = self.data["_old"]
+        if held == none then
+            return none
+        end
+        let parsed = Json.parse(held)
+        if parsed.is_err() then
+            return none
+        end
+        let read = Json.to<map<string, string>>(parsed.unwrap())
+        if read.is_err() then
+            return none
+        end
+        read.unwrap()[name]
     end
-    let parsed = Json.parse(held)
-    if parsed.is_err() then
-      return none
-    end
-    let read = Json.to<map<string, string>>(parsed.unwrap())
-    if read.is_err() then
-      return none
-    end
-    read.unwrap()[name]
-  end
 end
 
 fun sign(secret: string, payload: string) -> string
-  Hash.hmac_sha256(secret, payload)
+    Hash.hmac_sha256(secret, payload)
 end
 
 fun encode(secret: string, data: map<string, string>) -> string
-  let payload = Base64.encode_url(Json.of(data).to_text())
-  "{payload}.{sign(secret, payload)}"
+    let payload = Base64.encode_url(Json.of(data).to_text())
+    "{payload}.{sign(secret, payload)}"
 end
 
 fun decode(secret: string, cookie: string) -> map<string, string>?
-  let dot = cookie.last_index_of(".")
-  if dot == none then
-    return none
-  end
-  let payload = cookie.substring(0, dot)
-  let given = cookie.substring(dot + 1, cookie.len())
-  if not Crypto.equal(given, sign(secret, payload)) then
-    return none
-  end
-  let text = Base64.decode(payload)
-  if text == none then
-    return none
-  end
-  let json = Json.parse(text)
-  if json.is_err() then
-    return none
-  end
-  let read = Json.to<map<string, string>>(json.unwrap())
-  if read.is_err() then
-    return none
-  end
-  read.unwrap()
+    let dot = cookie.last_index_of(".")
+    if dot == none then
+        return none
+    end
+    let payload = cookie.substring(0, dot)
+    let given = cookie.substring(dot + 1, cookie.len())
+    if not Crypto.equal(given, sign(secret, payload)) then
+        return none
+    end
+    let text = Base64.decode(payload)
+    if text == none then
+        return none
+    end
+    let json = Json.parse(text)
+    if json.is_err() then
+        return none
+    end
+    let read = Json.to<map<string, string>>(json.unwrap())
+    if read.is_err() then
+        return none
+    end
+    read.unwrap()
 end
 
 --" The session of this request (`sessions` middleware must be in use). --"
 fun session_of(req: Request) -> Session
-  let held = req.attrs["session"]
-  if held != none then
-    let s = held.as<Session>()
-    if s != none then
-      return s
+    let held = req.attrs["session"]
+    if held != none then
+        let s = held.as<Session>()
+        if s != none then
+            return s
+        end
     end
-  end
-  Session { data: {}, changed: false, fresh: true }
+    Session { data: {}, changed: false, fresh: true }
 end
 
 --" How long a session lives and how its cookie is sent. --"
 struct Options
-  --" The `Secure` attribute: the cookie only travels over HTTPS. Turn it on behind HTTPS. --"
-  public secure: bool = false
-  --" Seconds without activity after which the session is forgotten (2 hours). The signed cookie
+    --" The `Secure` attribute: the cookie only travels over HTTPS. Turn it on behind HTTPS. --"
+    public secure: bool = false
+    --" Seconds without activity after which the session is forgotten (2 hours). The signed cookie
   carries its own expiry, so an old cookie that was copied stops working. --"
-  public lifetime: int = 7200
-  --" `Lax` (the default: not sent with requests another site starts, except links), `Strict` or `None`. --"
-  public same_site: string = "Lax"
-  --" Where the data lives. `none` (the default): in the signed cookie itself (about 3 KB, shared by
+    public lifetime: int = 7200
+    --" `Lax` (the default: not sent with requests another site starts, except links), `Strict` or `None`. --"
+    public same_site: string = "Lax"
+    --" Where the data lives. `none` (the default): in the signed cookie itself (about 3 KB, shared by
   nobody). A `cache.Store` (`cache.DbStore`, `cache.RedisStore`, ...): the cookie only carries a
   random identifier, signed, and the data stays on the server: no size limit, can be ended from the
   server, and shared by every worker (`cache.MemoryStore` is one per worker). --"
-  public store: cache.Store? = none
-  --" With a store, the keys start with this. --"
-  public prefix: string = "session:"
+    public store: cache.Store? = none
+    --" With a store, the keys start with this. --"
+    public prefix: string = "session:"
 end
 
 --" Loads the session from the cookie `qs` (signed with `secret`) and writes it back when it
 changed. The cookie is `HttpOnly` and `SameSite=Lax`, and the session ends after two hours without
 activity; give `secure: true` behind HTTPS (`sessions_with`), or choose the lifetime (`sessions_using`). --"
 fun sessions(secret: string) -> web.Middleware
-  sessions_using(secret, Options {})
+    sessions_using(secret, Options {})
 end
 
 --" Like `sessions`, with the `Secure` attribute of the cookie as you choose it. --"
 fun sessions_with(secret: string, secure: bool) -> web.Middleware
-  sessions_using(secret, Options { secure: secure })
+    sessions_using(secret, Options { secure: secure })
 end
 
 --" Like `sessions`, with the options you choose. --"
 fun sessions_using(secret: string, options: Options) -> web.Middleware
-  fun(req: Request, next: web.Handler) -> Response
-    let now = time.now()
-    let store = options.store
-    let cookie = req.cookies["qs"]
-    -- the identifier of the stored data (server-side mode only), once the signature is checked
-    let id: string? = none
-    let loaded: map<string, string>? = none
-    if store == none then
-      loaded = if cookie == none then none else decode(secret, cookie) end
-    else
-      id = if cookie == none then none else signed_id(secret, cookie) end
-      if id != none then
-        let text = store.read(options.prefix + id)
-        loaded = if text == none then none else parse_data(text) end
-        if loaded == none then
-          id = none
+    fun(req: Request, next: web.Handler) -> Response
+        let now = time.now()
+        let store = options.store
+        let cookie = req.cookies["qs"]
+        -- the identifier of the stored data (server-side mode only), once the signature is checked
+        let id: string? = none
+        let loaded: map<string, string>? = none
+        if store == none then
+            loaded = if cookie == none then none else decode(secret, cookie) end
+        else
+            id = if cookie == none then none else signed_id(secret, cookie) end
+            if id != none then
+                let text = store.read(options.prefix + id)
+                loaded = if text == none then none else parse_data(text) end
+                if loaded == none then
+                    id = none
+                end
+            end
         end
-      end
+        let data: map<string, string> = if loaded == none then {} else loaded end
+        let stamp = int.parse(data["_exp"] ?? "")
+        -- a cookie older than its expiry is a stranger; one without expiry (from before) is stamped now
+        if stamp != none and stamp < now then
+            data = {}
+            loaded = none
+        end
+        let s = Session { data: data, changed: false, fresh: loaded == none }
+        -- what the previous request left for this one only
+        if s.data["_old_next"] != none then
+            s.data["_old"] = s.data["_old_next"] ?? ""
+            s.data.remove("_old_next")
+            s.changed = true
+        else
+            if s.data["_old"] != none then
+                s.data.remove("_old")
+                s.changed = true
+            end
+        end
+        req.attrs["session"] = Any.of(s)
+        let res = next(req)
+        let renew = stamp == none or stamp - now < options.lifetime * 500
+        if not s.data.is_empty() and renew then
+            s.changed = true
+        end
+        if store != none then
+            return save_stored(res, s, store, options, id, secret, now)
+        end
+        if s.changed and not s.data.is_empty() then
+            s.data["_exp"] = "{now + options.lifetime * 1000}"
+            let value = encode(secret, s.data)
+            if value.len() <= 3800 then
+                res.cookies.push(Cookie { name: "qs", value: value, secure: options.secure, same_site: options.same_site, max_age: options.lifetime })
+            else
+                Log.error("the session is too big for a cookie and was not saved")
+            end
+        else
+            if s.changed then
+                -- everything was forgotten: end the cookie
+                res.cookies.push(Cookie { name: "qs", value: "", secure: options.secure, same_site: options.same_site, max_age: 0 })
+            end
+        end
+        res
     end
-    let data: map<string, string> = if loaded == none then {} else loaded end
-    let stamp = int.parse(data["_exp"] ?? "")
-    -- a cookie older than its expiry is a stranger; one without expiry (from before) is stamped now
-    if stamp != none and stamp < now then
-      data = {}
-      loaded = none
-    end
-    let s = Session { data: data, changed: false, fresh: loaded == none }
-    -- what the previous request left for this one only
-    if s.data["_old_next"] != none then
-      s.data["_old"] = s.data["_old_next"] ?? ""
-      s.data.remove("_old_next")
-      s.changed = true
-    else
-      if s.data["_old"] != none then
-        s.data.remove("_old")
-        s.changed = true
-      end
-    end
-    req.attrs["session"] = Any.of(s)
-    let res = next(req)
-    let renew = stamp == none or stamp - now < options.lifetime * 500
-    if not s.data.is_empty() and renew then
-      s.changed = true
-    end
-    if store != none then
-      return save_stored(res, s, store, options, id, secret, now)
-    end
-    if s.changed and not s.data.is_empty() then
-      s.data["_exp"] = "{now + options.lifetime * 1000}"
-      let value = encode(secret, s.data)
-      if value.len() <= 3800 then
-        res.cookies.push(Cookie { name: "qs", value: value, secure: options.secure, same_site: options.same_site, max_age: options.lifetime })
-      else
-        Log.error("the session is too big for a cookie and was not saved")
-      end
-    else
-      if s.changed then
-        -- everything was forgotten: end the cookie
-        res.cookies.push(Cookie { name: "qs", value: "", secure: options.secure, same_site: options.same_site, max_age: 0 })
-      end
-    end
-    res
-  end
 end
 
 -- `id.signature` for the cookie of a server-side session
 fun signed_cookie(secret: string, id: string) -> string
-  "{id}.{sign(secret, id)}"
+    "{id}.{sign(secret, id)}"
 end
 
 -- the identifier of a cookie made by `signed_cookie`, or none when the signature is wrong
 fun signed_id(secret: string, cookie: string) -> string?
-  let dot = cookie.last_index_of(".")
-  if dot == none then
-    return none
-  end
-  let id = cookie.substring(0, dot)
-  if id.is_empty() or not Crypto.equal(cookie.substring(dot + 1, cookie.len()), sign(secret, id)) then
-    return none
-  end
-  id
+    let dot = cookie.last_index_of(".")
+    if dot == none then
+        return none
+    end
+    let id = cookie.substring(0, dot)
+    if id.is_empty() or not Crypto.equal(cookie.substring(dot + 1, cookie.len()), sign(secret, id)) then
+        return none
+    end
+    id
 end
 
 fun parse_data(text: string) -> map<string, string>?
-  let json = Json.parse(text)
-  if json.is_err() then
-    return none
-  end
-  let read = Json.to<map<string, string>>(json.unwrap())
-  if read.is_err() then
-    return none
-  end
-  read.unwrap()
+    let json = Json.parse(text)
+    if json.is_err() then
+        return none
+    end
+    let read = Json.to<map<string, string>>(json.unwrap())
+    if read.is_err() then
+        return none
+    end
+    read.unwrap()
 end
 
 -- writes (or forgets) the data in the store and the cookie of the response
 fun save_stored(res: Response, s: Session, store: cache.Store, options: Options, known: string?, secret: string, now: int) -> Response
-  let id = known
-  if s.rotated and id != none then
-    -- a new identifier for the same data: the old one must stop working
-    store.drop(options.prefix + id)
-    id = none
-  end
-  if s.changed and not s.data.is_empty() then
-    if id == none then
-      let made = Crypto.token(24)
-      if made.is_err() then
-        Log.error("the session could not be saved: no secure randomness")
-        return res
-      end
-      id = made.unwrap()
-    end
-    s.data["_exp"] = "{now + options.lifetime * 1000}"
-    store.write(options.prefix + (id ?? ""), Json.of(s.data).to_text(), options.lifetime)
-    res.cookies.push(Cookie { name: "qs", value: signed_cookie(secret, id ?? ""), secure: options.secure, same_site: options.same_site, max_age: options.lifetime })
-  else
-    if s.changed then
-      if id != none then
+    let id = known
+    if s.rotated and id != none then
+        -- a new identifier for the same data: the old one must stop working
         store.drop(options.prefix + id)
-      end
-      res.cookies.push(Cookie { name: "qs", value: "", secure: options.secure, same_site: options.same_site, max_age: 0 })
+        id = none
     end
-  end
-  res
+    if s.changed and not s.data.is_empty() then
+        if id == none then
+            let made = Crypto.token(24)
+            if made.is_err() then
+                Log.error("the session could not be saved: no secure randomness")
+                return res
+            end
+            id = made.unwrap()
+        end
+        s.data["_exp"] = "{now + options.lifetime * 1000}"
+        store.write(options.prefix + (id ?? ""), Json.of(s.data).to_text(), options.lifetime)
+        res.cookies.push(Cookie { name: "qs", value: signed_cookie(secret, id ?? ""), secure: options.secure, same_site: options.same_site, max_age: options.lifetime })
+    else
+        if s.changed then
+            if id != none then
+                store.drop(options.prefix + id)
+            end
+            res.cookies.push(Cookie { name: "qs", value: "", secure: options.secure, same_site: options.same_site, max_age: 0 })
+        end
+    end
+    res
 end
 
 --" Refuses the unsafe requests that do not carry the token of the session. --"
 fun csrf_protect() -> web.Middleware
-  csrf_protect_except([])
+    csrf_protect_except([])
 end
 
 --" Like `csrf_protect`, but leaves alone the requests whose path starts with one of `prefixes`:
 an API for other programs (`"/api/"`, which authenticates with a token it sends itself) or a webhook
 that another service calls (`"/webhooks/"`). Everything else needs the token. --"
 fun csrf_protect_except(prefixes: array<string>) -> web.Middleware
-  fun(req: Request, next: web.Handler) -> Response
-    if ["GET", "HEAD", "OPTIONS"].contains(req.method) then
-      return next(req)
-    end
-    for p in prefixes do
-      if req.path.starts_with(p) then
-        return next(req)
-      end
-    end
-    let s = session_of(req)
-    let expected = s.get("_csrf")
-    let given = req.header("x-csrf-token")
-    if given == none then
-      let form = req.form()
-      if form.is_ok() then
-        given = form.unwrap()["_csrf"]
-      else
-        -- a form with files carries the field as one of its parts
-        let parts = req.multipart()
-        if parts.is_ok() then
-          for part in parts.unwrap() do
-            if part.name == "_csrf" and part.filename == none then
-              given = part.text()
-            end
-          end
+    fun(req: Request, next: web.Handler) -> Response
+        if ["GET", "HEAD", "OPTIONS"].contains(req.method) then
+            return next(req)
         end
-      end
+        for p in prefixes do
+            if req.path.starts_with(p) then
+                return next(req)
+            end
+        end
+        let s = session_of(req)
+        let expected = s.get("_csrf")
+        let given = req.header("x-csrf-token")
+        if given == none then
+            let form = req.form()
+            if form.is_ok() then
+                given = form.unwrap()["_csrf"]
+            else
+                -- a form with files carries the field as one of its parts
+                let parts = req.multipart()
+                if parts.is_ok() then
+                    for part in parts.unwrap() do
+                        if part.name == "_csrf" and part.filename == none then
+                            given = part.text()
+                        end
+                    end
+                end
+            end
+        end
+        if expected == none or given == none or not Crypto.equal(expected, given) then
+            return web.Problem { status: 403, message: "invalid CSRF token" }.to_response()
+        end
+        next(req)
     end
-    if expected == none or given == none or not Crypto.equal(expected, given) then
-      return web.Problem { status: 403, message: "invalid CSRF token" }.to_response()
-    end
-    next(req)
-  end
 end
 
 --" The usual protection of a site with forms, in one call: sessions with a signed cookie
@@ -412,8 +412,8 @@ end
 HTTPS. The token is read from the header `X-CSRF-Token` or from the field `_csrf` of a form (a form
 with files too). --"
 fun protect(app: web.App, secret: string, options: Options)
-  app.use(sessions_using(secret, options))
-  app.use(csrf_protect())
+    app.use(sessions_using(secret, options))
+    app.use(csrf_protect())
 end
 
 export Session, Options, session_of, sessions, sessions_with, sessions_using, csrf_protect, csrf_protect_except, protect

@@ -22,65 +22,65 @@ import "app.q" as web
 
 --" The rules about one kind of item (`S`) for one kind of user (`U`). --"
 struct Policy<U, S>
-  rules: map<string, fun(U, S) -> bool>
-  gate: fun(U, string) -> bool?
+    rules: map<string, fun(U, S) -> bool>
+    gate: fun(U, string) -> bool?
 end
 
 impl<U, S> Policy<U, S>
-  --" A policy with no rule: everything is refused. --"
-  public fun create() -> Policy<U, S>
-    Policy<U, S> { rules: {}, gate: fun(user: U, ability: string) -> bool?
-      none
-    end }
-  end
-
-  --" The user may do `ability` to an item when `rule` says so. --"
-  public fun allow(self, ability: string, rule: fun(U, S) -> bool) -> Policy<U, S>
-    self.rules[ability] = rule
-    self
-  end
-
-  --" A check that runs before the rules: `true` allows, `false` refuses, `none` goes on. --"
-  public fun before(self, gate: fun(U, string) -> bool?) -> Policy<U, S>
-    self.gate = gate
-    self
-  end
-
-  --" Whether the user may do `ability` to `item`. --"
-  public fun can(self, user: U, ability: string, item: S) -> bool
-    let early = self.gate(user, ability)
-    if early != none then
-      return early == true
+    --" A policy with no rule: everything is refused. --"
+    public fun create() -> Policy<U, S>
+        Policy<U, S> { rules: {}, gate: fun(user: U, ability: string) -> bool?
+            none
+        end }
     end
-    let rule = self.rules[ability]
-    if rule == none then
-      return false
-    end
-    rule(user, item)
-  end
 
-  public fun cannot(self, user: U, ability: string, item: S) -> bool
-    not self.can(user, ability, item)
-  end
-
-  --" `Ok(true)`, or a `403` problem a handler can return as it is. --"
-  public fun authorize(self, user: U, ability: string, item: S) -> Result<bool, web.Problem>
-    if self.can(user, ability, item) then
-      return Result<bool, web.Problem>.Ok(true)
+    --" The user may do `ability` to an item when `rule` says so. --"
+    public fun allow(self, ability: string, rule: fun(U, S) -> bool) -> Policy<U, S>
+        self.rules[ability] = rule
+        self
     end
-    Result<bool, web.Problem>.Err(web.Problem { status: 403, message: "Forbidden" })
-  end
 
-  --" The items the user may do `ability` to. --"
-  public fun filter(self, user: U, ability: string, items: array<S>) -> array<S>
-    let kept: array<S> = []
-    for item in items do
-      if self.can(user, ability, item) then
-        kept.push(item)
-      end
+    --" A check that runs before the rules: `true` allows, `false` refuses, `none` goes on. --"
+    public fun before(self, gate: fun(U, string) -> bool?) -> Policy<U, S>
+        self.gate = gate
+        self
     end
-    kept
-  end
+
+    --" Whether the user may do `ability` to `item`. --"
+    public fun can(self, user: U, ability: string, item: S) -> bool
+        let early = self.gate(user, ability)
+        if early != none then
+            return early == true
+        end
+        let rule = self.rules[ability]
+        if rule == none then
+            return false
+        end
+        rule(user, item)
+    end
+
+    public fun cannot(self, user: U, ability: string, item: S) -> bool
+        not self.can(user, ability, item)
+    end
+
+    --" `Ok(true)`, or a `403` problem a handler can return as it is. --"
+    public fun authorize(self, user: U, ability: string, item: S) -> Result<bool, web.Problem>
+        if self.can(user, ability, item) then
+            return Result<bool, web.Problem>.Ok(true)
+        end
+        Result<bool, web.Problem>.Err(web.Problem { status: 403, message: "Forbidden" })
+    end
+
+    --" The items the user may do `ability` to. --"
+    public fun filter(self, user: U, ability: string, items: array<S>) -> array<S>
+        let kept: array<S> = []
+        for item in items do
+            if self.can(user, ability, item) then
+                kept.push(item)
+            end
+        end
+        kept
+    end
 end
 
 export Policy
