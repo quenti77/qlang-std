@@ -214,10 +214,30 @@ qlang doc -o API.md # régénérer l'API
 
 MIT.
 
-## Stability and version 0.20.0
+## Versions, stability and qlang
 
-`qlang.toml` has a `[stability]` table (provisional or experimental, file by file); `qlang doc` writes the level under
-each file of [API.md](API.md), and the CI runs `qlang doc --require-levels`, so a new file must say its level. The
-providers and other functions the container finds by reflection carry `#[used]` (so `qlang lint` leaves them alone), which
-needs qlang 0.73 or later; two private functions nobody called (`wants_json` in `web/admin.q`, `relation_error` in
-`web/relations.q`) were removed.
+**Levels.** `qlang.toml` has a `[stability]` table (stable, provisional or experimental, file by file); `qlang doc` writes the level
+under each file of [API.md](API.md), and the CI runs `qlang doc --require-levels`, so a new file must say its level. The levels
+are explained in `docs/stability.md` of qlang.
+
+**What a version of std may change** (semantic versioning, by file level):
+
+| Level | In a minor or a patch version |
+| --- | --- |
+| stable | nothing that breaks: functions and options are added, none is removed or changed without a deprecation cycle of two minor versions |
+| provisional | a change is allowed, announced as **Breaking** in the [CHANGELOG](CHANGELOG.md) with how to adapt |
+| experimental | may change or go at any time |
+
+**Which qlang.** std 1.x is written and tested for qlang 1.1 and later (the files are formatted by `qlang fmt` 1.0; the container finds
+providers by reflection with `#[used]`, which needs 0.73 or later). A new qlang minor version never breaks std: qlang's own
+stable parts do not break in 1.x, and the CI of this repository installs the latest qlang and runs all the tests on every change
+and every week. When std needs a feature of a later qlang, it says so in the CHANGELOG and raises this minimum in the same minor
+version.
+
+**The site.** `STD_VERSION` in qlang-learn names the std release the documentation and the examples run with, and `versions.json`
+pairs it with a qlang version. A new std release reaches the site by running the workflow *Follow a release* of qlang-learn with
+`project` = `std`: it opens a pull request.
+
+**Releasing.** Raise `version` in `qlang.toml`, write the CHANGELOG entry (with a **Breaking** section when a provisional or
+experimental file changed incompatibly), run `qlang test`, `qlang fmt --check` and `qlang doc --require-levels -o API.md`, merge, then
+tag `vX.Y.Z` and create the release.
