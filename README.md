@@ -186,6 +186,16 @@ print(config.get("serveur").unwrap().get("port").unwrap().as_number())   -- 8080
 Une erreur de lecture est un `Err` avec le numéro de ligne ; rien ne s'arrête sur une donnée
 invalide.
 
+## Niveaux de stabilité
+
+Chaque fichier a un niveau dans `[stability]` de `qlang.toml` (voir `docs/stability.md` de qlang) et `API.md` le répète sous
+son titre. **Stable** (une version mineure ne casse rien sans cycle de dépréciation) : `csv`, `toml`, `template`, `jwt`, `i18n`,
+`cli`. **Provisoire** : `yaml` et `xml` (des sous-ensembles du format), `queue`, `schedule`, `mail`, `notify`, `s3` et le cœur
+web (`web/app`, `session`, `validate`, `migrate`, `query`, `cache`, `middleware`, `health`, `limit`, `auth`, `upload`,
+`testing`). **Expérimental** : le reste de `web/` (`container`, `openapi`, `ws`, `relations`, `policy`, `resource`, `seed`,
+`queue_admin`, `metrics`, `events`, `commands`, `locale`, `refresh`, `proxy`, `accounts`, `admin`). Un fichier passe au niveau
+supérieur quand ses tests et son `API.md` sont complets et qu'une version n'a rien cassé sur lui.
+
 ## Développer
 
 ```sh

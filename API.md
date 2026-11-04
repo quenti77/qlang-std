@@ -1,6 +1,6 @@
 # cli.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Command`
 
@@ -83,7 +83,7 @@ The set of commands of a program.
 
 # csv.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun parse(text: string) -> Result<array<array<string>>, Error>`
 
@@ -111,7 +111,7 @@ Like `to_text`, with another one-character separator.
 
 # i18n.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Translator`
 
@@ -165,7 +165,7 @@ The built-in plural rule of a language.
 
 # jwt.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Key`
 
@@ -807,7 +807,7 @@ A list of tasks.
 
 # template.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun render(source: string, data: Json) -> Result<string, Error>`
 
@@ -823,7 +823,7 @@ Like `render`, for plain texts only: `values` maps names to strings.
 
 # toml.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun parse(text: string) -> Result<Json, Error>`
 
