@@ -13,9 +13,9 @@ provisional = [
   "queue.q", "schedule.q", "mail.q", "notify.q", "s3.q",
   "web/app.q", "web/session.q", "web/validate.q", "web/migrate.q", "web/query.q", "web/cache.q",
   "web/middleware.q", "web/health.q", "web/limit.q", "web/auth.q", "web/upload.q", "web/testing.q",
-]
-experimental = [
+  # experimental before: each has tests and an API.md section
   "web/container.q", "web/openapi.q", "web/ws.q", "web/relations.q", "web/policy.q", "web/resource.q",
   "web/seed.q", "web/queue_admin.q", "web/metrics.q", "web/events.q", "web/commands.q", "web/locale.q",
   "web/refresh.q", "web/proxy.q", "web/accounts.q", "web/admin.q",
 ]
+experimental = []

@@ -831,7 +831,7 @@ Reads TOML text into a `Json` object. `err`, with the line, when the text is not
 
 # web/accounts.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Options`
 
@@ -902,7 +902,7 @@ A guard: signed in **and** with a checked email (`403` when the address is not c
 
 # web/admin.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Column`
 
@@ -1209,7 +1209,7 @@ A cache over a store.
 
 # web/commands.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Migrations`
 
@@ -1229,7 +1229,7 @@ The seeders of the application, as a service (for `db:seed`).
 
 # web/container.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Service`
 
@@ -1280,7 +1280,7 @@ Services, built from providers.
 
 # web/events.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Events`
 
@@ -1338,7 +1338,7 @@ At most `limit` requests per `seconds` for each key `key_of` gives. The answers 
 
 # web/locale.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `fun locale_of(req: Request) -> string`
 
@@ -1358,7 +1358,7 @@ Sets everything up: the translator and the `Lang` service in the container, and 
 
 # web/metrics.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Metrics`
 
@@ -1462,7 +1462,7 @@ Where a migration stands.
 
 # web/openapi.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `fun schema_of(t: TypeInfo, schemas: Schemas) -> Json`
 
@@ -1478,7 +1478,7 @@ Adds `GET path` that answers the document (written when the first request comes,
 
 # web/policy.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Policy`
 
@@ -1486,7 +1486,7 @@ The rules about one kind of item (`S`) for one kind of user (`U`).
 
 # web/proxy.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `fun scheme(req: Request) -> string`
 
@@ -1560,7 +1560,7 @@ A SELECT, INSERT, UPDATE or DELETE under construction.
 
 # web/queue_admin.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `fun mount(app: App, queue: Queue, path: string, guard: fun(Request) -> Response?)`
 
@@ -1568,7 +1568,7 @@ Adds the dashboard routes under `path`; `guard` runs first on each of them (`non
 
 # web/refresh.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Refresh`
 
@@ -1602,7 +1602,7 @@ The token to send, and the user it belongs to.
 
 # web/relations.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct With`
 
@@ -1635,7 +1635,7 @@ Many-to-many through a table: `pivot` has a `parent_key` column (the `key` of th
 
 # web/resource.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Resource`
 
@@ -1652,7 +1652,7 @@ _Stability: **experimental**._
 
 # web/seed.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Factory`
 
@@ -1951,7 +1951,7 @@ Checks values against the rules written on their fields.
 
 # web/ws.q
 
-_Stability: **experimental**._
+_Stability: **provisional**._
 
 ## `struct Hub`
 
