@@ -248,7 +248,7 @@ The keys of a JWKS document (`{"keys": [...]}`), as an identity provider publish
 
 # mail.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Mail`
 
@@ -369,7 +369,7 @@ Teaches `queue` to do the `SendMail` jobs with `mailer` (a refused mail is tried
 
 # notify.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Notification`
 
@@ -468,7 +468,7 @@ The channels of the application, by name.
 
 # queue.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct JobRow`
 
@@ -724,7 +724,7 @@ A key: the type and the fields of the job.
 
 # s3.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct S3`
 
@@ -755,7 +755,7 @@ A bucket.
 
 # schedule.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Cron`
 
@@ -955,7 +955,7 @@ Adds the pages and the API of the table above under `prefix` (`"/admin"`), behin
 
 # web/app.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Get`
 
@@ -1096,7 +1096,7 @@ The application.
 
 # web/auth.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun jwt_guard(keys: array<Key>, options: Options) -> fun(Request) -> Response?`
 
@@ -1120,7 +1120,7 @@ The keys of the JWKS published at `url`, kept `ttl` seconds in the cache.
 
 # web/cache.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `trait Store`
 
@@ -1295,7 +1295,7 @@ A set of listeners, by the type of event.
 
 # web/health.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Health`
 
@@ -1322,7 +1322,7 @@ A check that sends `PING` to Redis.
 
 # web/limit.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun by_header(name: string) -> fun(Request) -> string`
 
@@ -1382,7 +1382,7 @@ Request counters kept in a cache.
 
 # web/middleware.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `fun logging() -> fun(Request, fun(Request) -> Response) -> Response`
 
@@ -1423,7 +1423,7 @@ Gives each request an identifier: the `X-Request-Id` it came with, or a new one.
 
 # web/migrate.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Migration`
 
@@ -1508,7 +1508,7 @@ Sends a `301` to the `https://` address of every request the proxy received in p
 
 # web/query.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Page`
 
@@ -1691,7 +1691,7 @@ Runs the seeders in order, each in a transaction (a failure undoes that one and 
 
 # web/session.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Session`
 
@@ -1761,7 +1761,7 @@ The usual protection of a site with forms, in one call: sessions with a signed c
 
 # web/testing.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct TestFile`
 
@@ -1842,7 +1842,7 @@ A WebSocket opened on an application without a network: what the server does is 
 
 # web/upload.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct Rules`
 
@@ -1891,7 +1891,7 @@ Reads the multipart body of a request. The `Err` is a `Problem` (a handler can r
 
 # web/validate.q
 
-_Stability: **provisional**._
+_Stability: **stable**._
 
 ## `struct NotBlank`
 

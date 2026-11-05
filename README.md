@@ -189,13 +189,12 @@ invalide.
 ## Niveaux de stabilité
 
 Chaque fichier a un niveau dans `[stability]` de `qlang.toml` (voir `docs/stability.md` de qlang) et `API.md` le répète sous
-son titre. **Stable** (une version mineure ne casse rien sans cycle de dépréciation) : `csv`, `toml`, `template`, `jwt`, `i18n`,
-`cli`. **Provisoire** : `yaml` et `xml` (des sous-ensembles du format), `queue`, `schedule`, `mail`, `notify`, `s3` et le cœur
-web (`web/app`, `session`, `validate`, `migrate`, `query`, `cache`, `middleware`, `health`, `limit`, `auth`, `upload`,
-`testing`) et le reste de `web/` (`container`, `openapi`, `ws`, `relations`, `policy`, `resource`, `seed`, `queue_admin`,
-`metrics`, `events`, `commands`, `locale`, `refresh`, `proxy`, `accounts`, `admin`, passés d'expérimental à provisoire).
-**Expérimental** : aucun fichier pour l'instant. Un fichier passe au niveau
-supérieur quand ses tests et son `API.md` sont complets et qu'une version n'a rien cassé sur lui.
+son titre. **Stable** (une version mineure ne casse rien sans cycle de dépréciation) : `csv`, `toml`, `template`, `jwt`, `i18n`, `cli`,
+`queue`, `schedule`, `mail`, `notify`, `s3` et le cœur web (`web/app`, `session`, `validate`, `migrate`, `query`, `cache`,
+`middleware`, `health`, `limit`, `auth`, `upload`, `testing`). **Provisoire** : `yaml` et `xml` (des sous-ensembles du format) et le
+reste de `web/` (`container`, `openapi`, `ws`, `relations`, `policy`, `resource`, `seed`, `queue_admin`, `metrics`, `events`,
+`commands`, `locale`, `refresh`, `proxy`, `accounts`, `admin`). **Expérimental** : aucun fichier pour l'instant. Un fichier passe au
+niveau supérieur quand ses tests et son `API.md` sont complets et qu'une version n'a rien cassé sur lui.
 
 ## Développer
 
