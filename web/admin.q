@@ -234,7 +234,7 @@ fun list_rows(admin: Admin, r: Resource, req: Request) -> Result<Listing, Error>
         return Result<Listing, Error>.Err(counted.unwrap_err())
     end
     let total = counted.unwrap()[0].get("n", Json.null()).as_number() as int
-    let pages = if total == 0 then 1 else (total + per - 1) div per end
+    let pages = if total == 0 then 1 else (total + per - 1) // per end
     let rows = admin.db.query("SELECT {column_names(r).join(", ")} FROM {r.table}{where_sql} ORDER BY {sort} {dir} LIMIT {per} OFFSET {(page - 1) * per}", params)
     if rows.is_err() then
         return Result<Listing, Error>.Err(rows.unwrap_err())

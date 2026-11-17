@@ -321,7 +321,7 @@ fun verify(token: string, keys: array<Key>, opts: Options) -> Result<Token, Erro
         return fail<Token>("signature: the signature is not valid")
     end
     let p = payload.unwrap()
-    let now = if opts.now > 0 then opts.now else time.now() div 1000 end
+    let now = if opts.now > 0 then opts.now else time.now() // 1000 end
     let exp = number_claim(p, "exp")
     if exp == none and opts.require_exp then
         return fail<Token>("claims: the token has no `exp`")

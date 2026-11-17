@@ -83,7 +83,7 @@ fun token(#[web.Body] input: Credentials, users: Users, config: Config) -> Resul
     if ok.is_err() or not ok.unwrap() then
         return Result<TokenResponse, HttpError>.Err(refused)
     end
-    let now = time.now() div 1000
+    let now = time.now() // 1000
     let signed = jwt.sign(Session { sub: "{row.id}", email: row.email, iat: now, exp: now + 900 }, jwt.Key.hs256(config.secret))
     if signed.is_err() then
         Log.error(signed.unwrap_err().message)

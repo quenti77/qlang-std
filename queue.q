@@ -1237,10 +1237,10 @@ worker. --"
 fun rate_limited(cache: cc.Cache, key: fun(Job) -> string, limit: int, seconds: int) -> JobMiddleware
     fun(job: Job, next: JobNext) -> Outcome
         let now = time.now()
-        let window = now div (seconds * 1000)
+        let window = now // (seconds * 1000)
         let seen = cache.increment("jobs-rate:{key(job)}@{window}", seconds * 2)
         if seen > limit then
-            return Outcome.release(seconds - (now div 1000) mod seconds)
+            return Outcome.release(seconds - (now // 1000) mod seconds)
         end
         next()
     end

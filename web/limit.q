@@ -37,11 +37,11 @@ end
 fun rate_limit(cache: cc.Cache, limit: int, seconds: int, key_of: fun(Request) -> string) -> web.Middleware
     let counters = cache.scoped("rate")
     fun(req: Request, next: web.Handler) -> Response
-        let window = time.now() div (seconds * 1000)
+        let window = time.now() // (seconds * 1000)
         let key = "{key_of(req)}@{window}"
         let seen = counters.increment(key, seconds * 2) - 1
         if seen >= limit then
-            let left = seconds - (time.now() div 1000) mod seconds
+            let left = seconds - (time.now() // 1000) mod seconds
             let res = web.Problem { status: 429, message: "Too Many Requests" }.to_response()
             res.headers["Retry-After"] = "{left}"
             res.headers["X-RateLimit-Limit"] = "{limit}"

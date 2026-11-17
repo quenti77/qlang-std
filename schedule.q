@@ -172,7 +172,7 @@ impl Schedule
     --" A task every `n` minutes (1 to 59), or every `n/60` hours when `n` is a multiple of 60 up to a day. --"
     public fun every_minutes(self, name: string, n: int, run: fun() -> string?)
         if n >= 60 and n mod 60 == 0 and n <= 1440 then
-            self.cron(name, "0 */{n div 60} * * *", run)
+            self.cron(name, "0 */{n // 60} * * *", run)
         else
             self.cron(name, "*/{n} * * * *", run)
         end
@@ -187,7 +187,7 @@ impl Schedule
   a minute (`work` does). --"
     public fun run_due(self) -> int
         let now = self.clock()
-        let minute = now div 60000
+        let minute = now // 60000
         let at = datetime.at(minute * 60000)
         let ran = 0
         for task in self.tasks do
@@ -211,7 +211,7 @@ impl Schedule
     public fun work(self)
         let last = -1
         while not Process.stopping() do
-            let minute = self.clock() div 60000
+            let minute = self.clock() // 60000
             if minute != last then
                 last = minute
                 self.run_due()
