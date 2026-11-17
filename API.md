@@ -284,7 +284,7 @@ Keeps the mails in memory: for tests.
 **Methods**
 
 - `fun new() -> MemoryMailer`
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct LogMailer`
 
@@ -292,7 +292,7 @@ Writes the mails in the log instead of sending them: for development.
 
 **Methods**
 
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct ResendMailer`
 
@@ -307,7 +307,7 @@ Writes the mails in the log instead of sending them: for development.
 **Methods**
 
 - `fun new(key: string) -> ResendMailer`
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct PostmarkMailer`
 
@@ -322,7 +322,7 @@ Writes the mails in the log instead of sending them: for development.
 **Methods**
 
 - `fun new(token: string) -> PostmarkMailer`
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct SendgridMailer`
 
@@ -337,7 +337,7 @@ Writes the mails in the log instead of sending them: for development.
 **Methods**
 
 - `fun new(key: string) -> SendgridMailer`
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct MailgunMailer`
 
@@ -353,7 +353,7 @@ Writes the mails in the log instead of sending them: for development.
 **Methods**
 
 - `fun new(key: string, domain: string) -> MailgunMailer`
-- `fun send(mail: Mail) -> Result<bool, Error>`
+- `fun send(mail: Mail) -> Result<bool, Error>` — Sends the mail. `true` when the service took it.
 
 ## `struct SendMail`
 
@@ -513,20 +513,20 @@ The jobs in a SQL database.
 
 - `fun install() -> Result<bool, Error>`
 - `fun push(kind: string, payload: string, available_at: int, now: int) -> Result<bool, Error>`
-- `fun waits() -> bool`
-- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>`
+- `fun waits() -> bool` — Whether `claim` waits by itself (so the worker has no need to sleep).
+- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>` — The oldest job that is due (and marks it as running), waiting up to `wait` seconds for one if the driver can wait.
 - `fun done(job: JobRow) -> Result<bool, Error>`
 - `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
 - `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
-- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>`
-- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>`
+- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>` — Puts a running job back for later **without counting the attempt** (a middleware asked to wait).
+- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>` — Takes the lock of a unique job; `false` when somebody holds it. It ends by itself after `seconds`.
 - `fun unlock(key: string) -> Result<bool, Error>`
 - `fun pending() -> Result<int, Error>`
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>`
-- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>`
-- `fun countdown(key: string) -> Result<bool, Error>`
+- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>` — Starts a counter at `n` (a batch of `n` jobs). It is forgotten after `seconds` if nobody ends it.
+- `fun countdown(key: string) -> Result<bool, Error>` — Takes one off the counter; `true` for the **one** call that brings it to zero, whatever the number of workers.
 
 ## `struct RedisDriver`
 
@@ -540,21 +540,21 @@ The jobs in Redis, like Laravel's Redis queue: the ready jobs are a list, the de
 **Methods**
 
 - `fun install() -> Result<bool, Error>`
-- `fun waits() -> bool`
+- `fun waits() -> bool` — Whether `claim` waits by itself (so the worker has no need to sleep).
 - `fun push(kind: string, payload: string, available_at: int, now: int) -> Result<bool, Error>`
-- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>`
+- `fun claim(now: int, timeout: int, wait: int) -> Result<JobRow?, Error>` — The oldest job that is due (and marks it as running), waiting up to `wait` seconds for one if the driver can wait.
 - `fun done(job: JobRow) -> Result<bool, Error>`
 - `fun release(job: JobRow, available_at: int, why: string) -> Result<bool, Error>`
 - `fun fail(job: JobRow, why: string, now: int) -> Result<bool, Error>`
-- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>`
-- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>`
+- `fun requeue(job: JobRow, available_at: int) -> Result<bool, Error>` — Puts a running job back for later **without counting the attempt** (a middleware asked to wait).
+- `fun lock(key: string, seconds: int, now: int) -> Result<bool, Error>` — Takes the lock of a unique job; `false` when somebody holds it. It ends by itself after `seconds`.
 - `fun unlock(key: string) -> Result<bool, Error>`
 - `fun pending() -> Result<int, Error>`
 - `fun failed() -> Result<array<FailedJob>, Error>`
 - `fun retry_failed(id: string, now: int) -> Result<bool, Error>`
 - `fun forget_failed(id: string) -> Result<bool, Error>`
-- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>`
-- `fun countdown(key: string) -> Result<bool, Error>`
+- `fun countdown_start(key: string, n: int, seconds: int, now: int) -> Result<bool, Error>` — Starts a counter at `n` (a batch of `n` jobs). It is forgotten after `seconds` if nobody ends it.
+- `fun countdown(key: string) -> Result<bool, Error>` — Takes one off the counter; `true` for the **one** call that brings it to zero, whatever the number of workers.
 
 ## `struct Outcome`
 
@@ -1136,7 +1136,7 @@ A store in the memory of the worker.
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
-- `fun incr(key: string, ttl: int) -> int`
+- `fun incr(key: string, ttl: int) -> int` — Adds 1 to a counter (0 if there is none) and gives the new value; a new counter lives `ttl` seconds. The step is done in one go where the store can (Redis), which is what makes a counter safe to share.
 
 ## `struct FileStore`
 
@@ -1148,7 +1148,7 @@ A store with a file per key in `dir`, which must exist. The first line of a file
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
-- `fun incr(key: string, ttl: int) -> int`
+- `fun incr(key: string, ttl: int) -> int` — Adds 1 to a counter (0 if there is none) and gives the new value; a new counter lives `ttl` seconds. The step is done in one go where the store can (Redis), which is what makes a counter safe to share.
 
 ## `struct RedisStore`
 
@@ -1165,7 +1165,7 @@ A store in Redis, shared by every worker of every machine. `prefix` is put befor
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
-- `fun incr(key: string, ttl: int) -> int`
+- `fun incr(key: string, ttl: int) -> int` — Adds 1 to a counter (0 if there is none) and gives the new value; a new counter lives `ttl` seconds. The step is done in one go where the store can (Redis), which is what makes a counter safe to share.
 
 ## `struct DbStore`
 
@@ -1184,7 +1184,7 @@ A store in a SQL database (SQLite, PostgreSQL, MySQL): one row per key in `table
 - `fun read(key: string) -> string?`
 - `fun write(key: string, value: string, ttl: int)`
 - `fun drop(key: string)`
-- `fun incr(key: string, ttl: int) -> int`
+- `fun incr(key: string, ttl: int) -> int` — Adds 1 to a counter (0 if there is none) and gives the new value; a new counter lives `ttl` seconds. The step is done in one go where the store can (Redis), which is what makes a counter safe to share.
 
 ## `struct Cache`
 
@@ -2008,8 +2008,8 @@ The messages of a `Bus` (the database), read after the last one seen in each roo
 **Methods**
 
 - `fun new(bus: Bus) -> DbFeed`
-- `fun watch(room: string)`
-- `fun pull(active: array<string>) -> array<(string, string)>`
+- `fun watch(room: string)` — Starts listening to a room: only what is published from now on is delivered.
+- `fun pull(active: array<string>) -> array<(string, string)>` — The messages that arrived since the last call, as (room, text). `active` are the rooms that have members here: a feed may skip the others.
 
 ## `struct RedisFeed`
 
@@ -2023,8 +2023,8 @@ The messages of Redis channels (`ws:{room}`): the worker subscribes once per roo
 **Methods**
 
 - `fun open(url: string, prefix: string) -> Result<RedisFeed, Error>` — Opens the connection that listens. Channels are named `{prefix}{room}`.
-- `fun watch(room: string)`
-- `fun pull(active: array<string>) -> array<(string, string)>`
+- `fun watch(room: string)` — Starts listening to a room: only what is published from now on is delivered.
+- `fun pull(active: array<string>) -> array<(string, string)>` — The messages that arrived since the last call, as (room, text). `active` are the rooms that have members here: a feed may skip the others.
 
 ## `struct RedisBus`
 
