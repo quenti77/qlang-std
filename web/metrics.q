@@ -41,7 +41,7 @@ struct Metrics
 end
 
 fun class_of(status: int) -> string
-    "{status div 100}xx"
+    "{status // 100}xx"
 end
 
 impl Metrics

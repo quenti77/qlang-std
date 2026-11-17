@@ -277,7 +277,7 @@ impl Translator
         let magnitude = if negative then -value else value end
         let scale = 10 ** decimals
         let scaled = (magnitude * (scale as float) + 0.5) as int
-        let whole = scaled div scale
+        let whole = scaled // scale
         let fraction = scaled mod scale
         let digits = "{whole}"
         let grouped = ""
