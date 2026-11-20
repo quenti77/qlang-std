@@ -1,5 +1,9 @@
 # Journal des changements
 
+## 1.0.1
+
+Le tag `v1.0.0` contenait encore `div` (avertissement `W001` à chaque import de `jwt.q`) ; cette version est la même avec `//` (#32), pour que qlang 1.9, qui retire `div`, puisse l'utiliser. Rien ne change pour un programme. **Il faut maintenant qlang 1.6 ou plus** (`//` n'existe pas avant).
+
 ## 1.0.0
 
 Première version stable. Ce que la 1.x promet : les fichiers **stables** ne cassent rien sans cycle de dépréciation (deux versions
