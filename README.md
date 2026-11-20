@@ -228,7 +228,7 @@ are explained in `docs/stability.md` of qlang.
 | provisional | a change is allowed, announced as **Breaking** in the [CHANGELOG](CHANGELOG.md) with how to adapt |
 | experimental | may change or go at any time |
 
-**Which qlang.** std 1.x is written and tested for qlang 1.1 and later (the files are formatted by `qlang fmt` 1.0; the container finds
+**Which qlang.** std 1.0.1 and later need qlang 1.6 or later (`//` replaces `div`); std 1.x is tested for the latest qlang (the files are formatted by `qlang fmt` 1.0; the container finds
 providers by reflection with `#[used]`, which needs 0.73 or later). A new qlang minor version never breaks std: qlang's own
 stable parts do not break in 1.x, and the CI of this repository installs the latest qlang and runs all the tests on every change
 and every week. When std needs a feature of a later qlang, it says so in the CHANGELOG and raises this minimum in the same minor
