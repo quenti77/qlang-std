@@ -10,7 +10,7 @@ requêtes, migrations, sessions).
 Dans le projet qui les utilise :
 
 ```sh
-qlang add std --git https://github.com/quenti77/qlang-std --tag v0.2.0
+qlang add std --git https://github.com/quenti77/qlang-std --tag v1.0.1
 ```
 
 puis, dans un fichier `.q` :
@@ -21,7 +21,7 @@ import "@std/template.q" as template
 import "@std/toml.q" as toml
 ```
 
-(Il faut `qlang` 0.62 ou plus. Pour une application web, `qlang init --web mon-site` crée le projet, avec ce paquet.)
+(Il faut `qlang` 1.6 ou plus. Pour une application web, `qlang init --web mon-site` crée le projet, avec ce paquet.)
 
 ## Les modules
 
