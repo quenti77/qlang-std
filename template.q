@@ -17,6 +17,8 @@ The syntax:
 - `{% if name %}...{% else %}...{% end %}` and `{% if not name %}...{% end %}`: a value is false
   when it is `null`, `false`, `0`, an empty string, an empty array or an empty object.
 - `{% for x in items %}...{% end %}`: inside, `loop.index` (from 1), `loop.first` and `loop.last`.
+  `{% for x in items %}...{% else %}...{% end %}`: the `else` part is shown when the list is empty
+  (or does not exist).
 - `{# a comment #}`.
 
 A value that does not exist is an error when it is printed (`render`); `if` and `for` treat it as
@@ -28,7 +30,7 @@ enum Node
     Text(text: string)
     Var(path: array<string>, literal: string?, filters: array<string>, line: int)
     If(path: array<string>, negate: bool, then_body: array<Node>, else_body: array<Node>, line: int)
-    For(name: string, path: array<string>, body: array<Node>, line: int)
+    For(name: string, path: array<string>, body: array<Node>, empty_body: array<Node>, line: int)
 end
 
 -- one piece of the template: its kind ("text", "var", "tag"), its text and its line
@@ -176,11 +178,19 @@ impl Parser
         if words.len() != 4 or words[2] != "in" then
             return Err(fail("write `for name in items`", t.line))
         end
-        let (body, ended) = self.block(["end"])?
+        let (body, ended) = self.block(["else", "end"])?
+        let empty_body: array<Node> = []
+        if ended == "else" then
+            let (more, ended_again) = self.block(["end"])?
+            if ended_again != "end" then
+                return Err(fail("this `for` has no `end`", t.line))
+            end
+            return Ok(Node.For(words[1], split_path(words[3]), body, more, t.line))
+        end
         if ended != "end" then
             return Err(fail("this `for` has no `end`", t.line))
         end
-        Ok(Node.For(words[1], split_path(words[3]), body, t.line))
+        Ok(Node.For(words[1], split_path(words[3]), body, empty_body, t.line))
     end
 end
 
@@ -333,13 +343,15 @@ impl Renderer
                     else
                         self.nodes(else_body, root, locals)?
                     end
-                case For(name, path, body, line) then
+                case For(name, path, body, empty_body, line) then
                     let found = lookup(path, root, locals)
+                    let shown = false
                     if found != none then
                         let items = found
                         if items.is_array() then
                             let list = items.as_array()
                             for i, item in list do
+                                shown = true
                                 let loop_info: map<string, Json> = {
                                     "index": Json.number((i + 1) as float),
                                     "first": Json.boolean(i == 0),
@@ -352,6 +364,9 @@ impl Renderer
                             let name_of = path.join(".")
                             return Err(fail("`{name_of}` is not a list", line))
                         end
+                    end
+                    if not shown then
+                        self.nodes(empty_body, root, locals)?
                     end
             end
         end

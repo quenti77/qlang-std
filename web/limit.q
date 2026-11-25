@@ -17,6 +17,7 @@ server directly, since it can then write anything in it.
 --"
 import "app.q" as web
 import "cache.q" as cc
+import "proxy.q" as proxy
 
 --" Counts by the value of a request header (`"unknown"` when absent). --"
 fun by_header(name: string) -> fun(Request) -> string
@@ -55,4 +56,36 @@ fun rate_limit(cache: cc.Cache, limit: int, seconds: int, key_of: fun(Request) -
     end
 end
 
-export rate_limit, by_header, by_path_and_header
+--" Counts by the address of the client that is connected to the server (`"unknown"` if it is not
+known). Behind a reverse proxy that is the proxy itself: use `by_client_ip` there. --"
+fun by_remote_addr() -> fun(Request) -> string
+    fun(req: Request) -> string
+        if req.remote_addr.is_empty() then "unknown" else req.remote_addr end
+    end
+end
+
+--" Counts by the first address of `X-Forwarded-For` when the proxy sent one, else by the address
+of the connection. Only trust it behind a proxy that sets the header: a client that reaches the
+server directly can write anything in it and so choose its own count. --"
+fun by_client_ip() -> fun(Request) -> string
+    let direct = by_remote_addr()
+    fun(req: Request) -> string
+        proxy.client_ip(req) ?? direct(req)
+    end
+end
+
+--" Like `rate_limit`, for the requests of one of `methods` to one of `paths` only (exact paths: the
+login of a site, for example `rate_limit_on(["POST"], ["/login", "/api/login"], cache, 5, 60, by_client_ip())`);
+every other request goes through unlimited. --"
+fun rate_limit_on(methods: array<string>, paths: array<string>, cache: cc.Cache, limit: int, seconds: int, key_of: fun(Request) -> string) -> web.Middleware
+    let limited = rate_limit(cache, limit, seconds, key_of)
+    fun(req: Request, next: web.Handler) -> Response
+        if methods.contains(req.method.upper()) and paths.contains(req.path) then
+            limited(req, next)
+        else
+            next(req)
+        end
+    end
+end
+
+export rate_limit, rate_limit_on, by_header, by_path_and_header, by_remote_addr, by_client_ip

@@ -1336,6 +1336,18 @@ Counts by header and path, so that one client has a budget per route.
 
 At most `limit` requests per `seconds` for each key `key_of` gives. The answers carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 
+## `fun by_remote_addr() -> fun(Request) -> string`
+
+Counts by the address of the client that is connected to the server (`"unknown"` if it is not known). Behind a reverse proxy that is the proxy itself: use `by_client_ip` there.
+
+## `fun by_client_ip() -> fun(Request) -> string`
+
+Counts by the first address of `X-Forwarded-For` when the proxy sent one, else by the address of the connection. Only trust it behind a proxy that sets the header: a client that reaches the server directly can write anything in it and so choose its own count.
+
+## `fun rate_limit_on(methods: array<string>, paths: array<string>, cache: Cache, limit: int, seconds: int, key_of: fun(Request) -> string) -> fun(Request, fun(Request) -> Response) -> Response`
+
+Like `rate_limit`, for the requests of one of `methods` to one of `paths` only (exact paths: the login of a site, for example `rate_limit_on(["POST"], ["/login", "/api/login"], cache, 5, 60, by_client_ip())`); every other request goes through unlimited.
+
 # web/locale.q
 
 _Stability: **provisional**._
