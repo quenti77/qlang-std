@@ -72,3 +72,11 @@ fun test_errors_say_what_and_where()
     assert_contains_text(assert_err(template.render("\{% for x a %}\{% end %}", d)).message, "write `for name in items`")
     assert_contains_text(assert_err(template.render("\{\{ }}", d)).message, "empty")
 end
+
+fun test_for_has_an_else_part_for_an_empty_list()
+    let source = "<<% for x in items %>>[<<<< x >>>>]<<% else %>>nothing<<% end %>>".replace("<<", "\{").replace(">>", "}")
+    assert_eq(template.render(source, data("<<\"items\":[]>>")).unwrap(), "nothing")
+    assert_eq(template.render(source, data("<<\"items\":null>>")).unwrap(), "nothing")
+    assert_eq(template.render(source, data("<<\"other\":1>>")).unwrap(), "nothing")
+    assert_eq(template.render(source, data("<<\"items\":[1,2]>>")).unwrap(), "[1][2]")
+end

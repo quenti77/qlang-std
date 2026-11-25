@@ -287,18 +287,47 @@ fun is_form(req: Request) -> bool
     kind.lower().starts_with("application/x-www-form-urlencoded") and not body.starts_with("\{") and not body.starts_with("[")
 end
 
+--" The values of a repeated field (a group of checkboxes) as the JSON array an `array<string>` (or
+`array<int>`, `array<float>`) field expects; a number that is not one is an error. --"
+fun form_list(name: string, values: array<string>, item: TypeInfo?) -> Result<Json, Error>
+    let out: array<Json> = []
+    let numeric = item != none and (item.kind == "int" or item.kind == "float")
+    for v in values do
+        if numeric then
+            let n = float.parse(v)
+            if n == none then
+                return Result<Json, Error>.Err(Error { message: "{name}: {v} is not a number" })
+            end
+            out.push(Json.number(n))
+        else
+            out.push(Json.string(v))
+        end
+    end
+    Result<Json, Error>.Ok(Json.array(out))
+end
+
 --" A form read as the JSON the body type expects: each field is turned into a number or a
-boolean when the field of the type is one. Fields that the type does not have are dropped. --"
+boolean when the field of the type is one, and a repeated field into an array when the field is an
+`array<...>` (an empty one when nothing was sent). Fields that the type does not have are dropped. --"
 fun form_json(req: Request, p: ParamInfo) -> Result<Json, Error>
-    let form = req.form()
+    let form = req.form_all()
     if form.is_err() then
         return Result<Json, Error>.Err(form.unwrap_err())
     end
-    let values = form.unwrap()
+    let all = form.unwrap()
     let shape = p.type_info()
     let out: map<string, Json> = {}
     for f in shape.fields do
-        let text = values[f.name]
+        let sent = all[f.name]
+        if f.info.kind == "array" then
+            let listed = form_list(f.name, sent ?? [], f.info.item)
+            if listed.is_err() then
+                return listed
+            end
+            out[f.name] = listed.unwrap()
+            continue
+        end
+        let text = if sent == none then none else sent[sent.len() - 1] end
         if text == none then
             if f.info.kind == "bool" then
                 out[f.name] = Json.boolean(false)
@@ -486,7 +515,7 @@ impl App
                 continue
             end
             let tail = if found.1 == "/" and prefix != "" then "" else found.1 end
-            self.register(c, found.0, self.base + prefix + tail, inherited)
+            self.register(c, found.0, joined(self.base + prefix, tail), inherited)
         end
     end
 
@@ -843,6 +872,23 @@ impl App
         self.chain = top
         top(req)
     end
+end
+
+--" A path made of two parts, with a single `/` where they meet: `"/api/" + "/login"` is `/api/login`.
+A prefix of `"/"` stands for no prefix. --"
+fun joined(prefix: string, tail: string) -> string
+    let head = prefix
+    while head.ends_with("/") do
+        head = head.strip_suffix("/") ?? ""
+    end
+    let rest = tail
+    while rest.starts_with("/") do
+        rest = rest.strip_prefix("/") ?? ""
+    end
+    if rest == "" then
+        return if head == "" then "/" else head end
+    end
+    head + "/" + rest
 end
 
 export App, ErrorEnvelope, Problem, Handler, Middleware, RouteDef, to_response

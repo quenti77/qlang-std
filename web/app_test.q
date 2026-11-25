@@ -1,6 +1,7 @@
 import "app.q" as web
 import "test_blog.q" as blog
 import "test_blog_controllers.q" as controllers
+import "test_forms.q" as forms
 
 fun build() -> web.App
     let app = web.App.new(Reflect.callables(blog))
@@ -233,4 +234,14 @@ fun test_json_sent_with_the_form_type_of_curl_is_still_json()
     let app = build()
     let sent = Request { method: "POST", url: "/posts", path: "/posts", headers: {"content-type": "application/x-www-form-urlencoded"}, body: "\{\"title\": \"Fifth\"\}" }
     assert_eq(app.handle(sent).status, 201)
+end
+
+fun test_a_repeated_form_field_is_read_into_an_array()
+    let app = web.App.boot(Reflect.declared(forms))
+    let post = fun(body: string) -> Response
+        app.handle(Request { method: "POST", url: "/picks", path: "/picks", headers: {"content-type": "application/x-www-form-urlencoded"}, body: body })
+    end
+    assert_eq(post("name=ada&tags=a&tags=b%20c&sizes=1&sizes=2").body, "ada:a,b c:2")
+    assert_eq(post("name=ada").body, "ada::0")
+    assert_eq(post("name=ada&sizes=big").status, 400)
 end
