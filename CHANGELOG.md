@@ -1,5 +1,14 @@
 # Journal des changements
 
+## 1.2.0
+
+Le câblage d'une application et le YAML des fichiers de configuration réels. Rien de cassant : une fonction ou une structure qui n'était pas un fournisseur utile n'en est plus un.
+
+- **`#[di.Helper]`** marque une fonction d'un module comme un simple utilitaire : `Container.new`, `App.new`, `App.boot` et `App.assemble` ne la prennent plus pour un fournisseur. Le constructeur d'une structure qui n'est pas `#[di.Service]` n'est plus enregistré par `App.new` (#35).
+- **`App.boot_with(declared, wire)`** et **`App.assemble_with`** : `wire` reçoit l'application une fois les services enregistrés, avant que les contrôleurs soient construits et le câblage vérifié, pour y mettre `app.bind<Port, Adaptateur>()` ou `app.container.set(...)` (#36).
+- **`app.on_error<E>(fun(e: E) -> Problem)`** : une route qui rend `Result<T, E>` répond avec le `Problem` de la fonction, au lieu d'un `500` ; une erreur sans fonction reste un `500` (#37).
+- **`yaml.q` lit les ancres, les alias et les clés de fusion** : `&nom` sur une valeur de mapping, un élément de séquence ou de collection en ligne, `*nom` pour en prendre une copie, `<<: *nom` et `<<: [*a, *b]` pour fusionner (une clé écrite à côté l'emporte). Un alias sans ancre avant lui est une erreur avec le numéro de ligne. Les tags (`!!str`) restent refusés, et `dump` n'écrit pas d'ancres (#38).
+
 ## 1.1.0
 
 Un formulaire à champs répétés, un `else` sur `for`, des chemins de contrôleur sans `//`, et une limitation de débit par client. Rien de cassant, mais **il faut maintenant qlang 1.12 ou plus** (`req.form_all()` et `req.remote_addr`).

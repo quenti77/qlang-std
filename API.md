@@ -1068,9 +1068,10 @@ The application.
 
 **Methods**
 
-- `fun new(providers: array<Callable>) -> App` — An application whose services come from these provider functions. Functions that carry a route annotation are handlers, not providers, and are left out.
+- `fun new(providers: array<Callable>) -> App` — An application whose services come from these provider functions. Functions that carry a route annotation are handlers, not providers, and so are functions marked `#[di.Helper]` and the constructors of plain structures: they are left out.
 - `fun services(constructors: array<Callable>)` — Provides every structure marked `#[di.Service]` among these constructors (`Reflect.constructors(models)`): its fields are what it needs.
 - `fun bind()` — Says that whoever needs an `I` (a trait) gets the service `T`.
+- `fun on_error(handler: fun(E) -> Problem)` — Turns the error `E` that a route returns (`Result<T, E>`) into a response: a domain error becomes a `Problem` here instead of a `500`. An error that no handler takes stays a `500`.
 - `fun guard(name: string, check: fun(Request) -> Response?)` — Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in `req.attrs`) and gives `none` to let it through or a response to stop there.
 - `fun route_list() -> array<RouteDef>` — The routes added so far, in order.
 - `fun use(m: fun(Request, fun(Request) -> Response) -> Response)` — Registers a middleware. The first one added is the outermost.
@@ -1089,7 +1090,9 @@ The application.
 - `fun discover(declared: array<Callable>)` — Registers what a module declares (`Reflect.declared(module)`): its functions with a route annotation, and every structure marked `#[Controller]`, which the container builds from its fields (like a `#[di.Service]`) and whose public methods with a route annotation become routes. Nothing to list by hand: a controller added to the module is found.
 - `fun declare(declared: array<Callable>)` — Says which structures are controllers (`Reflect.declared(module)`): `validate` reports each one that was never registered, with `controller`, `controller_from_container` or `discover`, instead of leaving a silent `404`.
 - `fun boot(declared: array<Callable>) -> App` — An application from everything the modules of the project declare, in one call (`App.boot(Reflect.declared(providers).concat(Reflect.declared(controllers)))`): the functions without a route are providers, the structures marked `#[di.Service]` are services (the other structures are plain data), the functions with a route annotation and the structures marked `#[Controller]` are the routes. It panics with the list of mistakes of wiring if there are any (`validate`), so the application does not start half built; `assemble` is the same without that check.
+- `fun boot_with(declared: array<Callable>, wire: fun(App)) -> App` — Like `boot`, with a step between the services and the routes: `wire` receives the application once its services are registered, and says what the container cannot guess (`app.bind<Mailer, Smtp>()`, `app.container.set(config)`), before the controllers are built and the wiring is checked.
 - `fun assemble(declared: array<Callable>) -> App` — Like `boot`, without checking the wiring (tests that add services afterwards).
+- `fun assemble_with(declared: array<Callable>, wire: fun(App)) -> App` — Like `assemble`, with the `wire` step of `boot_with`.
 - `fun controller_from_container()` — Like `controller`, with the instance taken from the container (a provider returns `T`).
 - `fun validate() -> array<string>` — Every mistake of wiring, as texts (empty when all is well): handlers that cannot be built, services that are missing or in a cycle, routes hidden by an earlier one. Call it when the application starts.
 - `fun handle(req: Request) -> Response` — The response to a request: the middleware, then the route that takes it.
@@ -1238,6 +1241,10 @@ Marks a structure as a service: the container builds it from its fields (see `Co
 ## `fun services_of(constructors: array<Callable>) -> array<Callable>`
 
 The constructors (`Reflect.constructors(module)`) of the structures marked `#[Service]`: add them to the providers of something that takes a list (`Cli.new(Reflect.callables(providers) .concat(services_of(Reflect.constructors(providers))))`).
+
+## `struct Helper`
+
+Marks a function of a module as a plain helper: `Container.new` does not take it for a provider, even if it returns a value.
 
 ## `struct Scoped`
 
