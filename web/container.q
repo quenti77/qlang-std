@@ -46,6 +46,12 @@ fun services_of(constructors: array<Callable>) -> array<Callable>
     constructors.filter(fun(c: Callable) -> bool c.annotation("Service") != none end)
 end
 
+--" Marks a function of a module as a plain helper: `Container.new` does not take it for a provider,
+even if it returns a value. --"
+#[annotation]
+struct Helper
+end
+
 --" Marks a provider whose service is built once for each request (each `child` container). --"
 #[annotation]
 struct Scoped
@@ -93,6 +99,9 @@ impl Container
     public fun new(callables: array<Callable>) -> Container
         let table: map<string, Provider> = {}
         for c in callables do
+            if c.annotation("Helper") != none then
+                continue
+            end
             let needs: array<string> = []
             for p in c.params do
                 needs.push(p.type_name)
@@ -299,4 +308,4 @@ impl Container
     end
 end
 
-export Container, Provider, Scoped, Transient, Service, services_of
+export Container, Provider, Scoped, Transient, Service, Helper, services_of

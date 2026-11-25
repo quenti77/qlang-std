@@ -71,7 +71,6 @@ fun test_documents()
 end
 
 fun test_what_it_cannot_read_is_said()
-    assert(yaml.parse("a: &x 1\nb: *x\n").is_err())
     assert(yaml.parse("a: !!str 1\n").is_err())
     assert(yaml.parse("a: 1\na: 2\n").is_err())
     assert(yaml.parse("a:\n\tb: 1\n").is_err())
@@ -80,6 +79,32 @@ fun test_what_it_cannot_read_is_said()
     let e = yaml.parse("a: 1\n b: 2\n")
     assert(e.is_err())
     assert(e.unwrap_err().message.contains("line 2"))
+end
+
+fun test_an_alias_is_a_copy_of_its_anchor()
+    let shared = assert_ok(yaml.parse("a:\n  main: &ssh\n    host: h1\n    user: root\nb:\n  main: *ssh\nc: &n 5\nd: *n\nitems:\n  - &first one\n  - *first\n  - &blk\n    k: v\n  - *blk\nflow: [&f 1, *f]\n"))
+    assert_eq(at(at(at(shared, "b"), "main"), "host").as_string(), "h1")
+    assert_eq(at(shared, "d").as_number(), 5.0)
+    assert_eq(at(shared, "items").as_array()[1].as_string(), "one")
+    assert_eq(at(at(shared, "items").as_array()[3], "k").as_string(), "v")
+    assert_eq(at(shared, "flow").as_array()[1].as_number(), 1.0)
+end
+
+fun test_a_merge_key_adds_the_keys_of_the_mapping()
+    let merged = assert_ok(yaml.parse("base: &base\n  host: h\n  port: 22\nother: &other\n  user: root\nsrv:\n  <<: *base\n  port: 2222\nboth:\n  <<: [*base, *other]\n  extra: 1\n"))
+    let srv = at(merged, "srv")
+    assert_eq(at(srv, "host").as_string(), "h")
+    assert_eq(at(srv, "port").as_number(), 2222.0)
+    let both = at(merged, "both")
+    assert_eq(at(both, "user").as_string(), "root")
+    assert_eq(at(both, "port").as_number(), 22.0)
+end
+
+fun test_an_unknown_or_later_alias_is_an_error_with_its_line()
+    let e = yaml.parse("a: *x\nb: &x 1\n")
+    assert(e.is_err())
+    assert(e.unwrap_err().message.contains("line 1"))
+    assert(yaml.parse("a:\n  <<: 3\n").is_err())
 end
 
 fun test_dump_reads_back_the_same()

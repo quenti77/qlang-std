@@ -254,6 +254,11 @@ fun to_response(a: Any) -> Response
     Response.json(json.to_text())
 end
 
+-- a structure's constructor is named like the structure; only a `#[di.Service]` one is a provider
+fun is_plain_constructor(c: Callable) -> bool
+    c.name == c.return_type and c.annotation("Service") == none
+end
+
 fun method_of(c: Callable) -> (string, string)?
     for name in ["Get", "Post", "Put", "Patch", "Delete"] do
         let a = c.annotation(name)
@@ -378,16 +383,18 @@ struct App
     guards: map<string, GuardFn>
     declared: array<string>
     registered: array<string>
+    errors: array<fun(Any) -> Response?>
 end
 
 impl App
     --" An application whose services come from these provider functions. Functions that carry a
-  route annotation are handlers, not providers, and are left out. --"
+  route annotation are handlers, not providers, and so are functions marked `#[di.Helper]` and the
+  constructors of plain structures: they are left out. --"
     public fun new(providers: array<Callable>) -> App
-        let services = providers.filter(fun(c: Callable) -> bool method_of(c) == none end)
+        let services = providers.filter(fun(c: Callable) -> bool method_of(c) == none and not is_plain_constructor(c) end)
         let c = di.Container.new(services)
         c.expects<Request>()
-        App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {}, declared: [], registered: [] }
+        App { container: c, routes: [], middlewares: [], validator: val.Validator.new(), base: "", fallback: none, chain: none, wiring: [], check_bodies: true, guards: {}, declared: [], registered: [], errors: [] }
     end
 
     --" Provides every structure marked `#[di.Service]` among these constructors
@@ -399,6 +406,18 @@ impl App
     --" Says that whoever needs an `I` (a trait) gets the service `T`. --"
     public fun bind<I, T>(self)
         self.container.bind<I, T>()
+    end
+
+    --" Turns the error `E` that a route returns (`Result<T, E>`) into a response: a domain error
+  becomes a `Problem` here instead of a `500`. An error that no handler takes stays a `500`. --"
+    public fun on_error<E>(self, handler: fun(E) -> Problem)
+        self.errors.push(fun(a: Any) -> Response?
+            let e = a.as<E>()
+            if e == none then
+                return none
+            end
+            handler(e).to_response()
+        end)
     end
 
     --" Names a guard for `#[Guard("name")]`. It receives the request (put what it learns in
@@ -572,7 +591,15 @@ impl App
   the list of mistakes of wiring if there are any (`validate`), so the application does not start
   half built; `assemble` is the same without that check. --"
     public fun boot(declared: array<Callable>) -> App
-        let app = App.assemble(declared)
+        App.boot_with(declared, fun(app: App) end)
+    end
+
+    --" Like `boot`, with a step between the services and the routes: `wire` receives the application
+  once its services are registered, and says what the container cannot guess
+  (`app.bind<Mailer, Smtp>()`, `app.container.set(config)`), before the controllers are built and
+  the wiring is checked. --"
+    public fun boot_with(declared: array<Callable>, wire: fun(App)) -> App
+        let app = App.assemble_with(declared, wire)
         let problems = app.validate()
         if not problems.is_empty() then
             panic("the application is not wired correctly:\n  " + problems.join("\n  "))
@@ -582,9 +609,14 @@ impl App
 
     --" Like `boot`, without checking the wiring (tests that add services afterwards). --"
     public fun assemble(declared: array<Callable>) -> App
-        -- a structure's constructor is named like the structure; a provider function is not
-        let app = App.new(declared.filter(fun(c: Callable) -> bool c.name != c.return_type end))
+        App.assemble_with(declared, fun(app: App) end)
+    end
+
+    --" Like `assemble`, with the `wire` step of `boot_with`. --"
+    public fun assemble_with(declared: array<Callable>, wire: fun(App)) -> App
+        let app = App.new(declared)
         app.container.services(declared)
+        wire(app)
         app.declare(declared)
         app.discover(declared)
         app
@@ -663,7 +695,7 @@ impl App
                     Log.error("{c.name}: {out.unwrap_err().message}")
                     return Problem { status: 500, message: "Internal Server Error" }.to_response()
                 end
-                let res = to_response(out.unwrap())
+                let res = app.respond(out.unwrap())
                 if code != 0 and res.status == 200 then
                     res.status = code
                 end
@@ -673,6 +705,19 @@ impl App
             source: c,
             guards: guard_names,
         })
+    end
+
+    fun respond(self, a: Any) -> Response
+        let parts = Reflect.parts(a)
+        if parts != none and parts.enum_name == "Result" and parts.variant == "Err" then
+            for handle in self.errors do
+                let made = handle(parts.values[0])
+                if made != none then
+                    return made
+                end
+            end
+        end
+        to_response(a)
     end
 
     fun is_service(self, p: ParamInfo) -> bool

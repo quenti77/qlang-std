@@ -16,14 +16,47 @@ scalars, block scalars (`|` literal and `>` folded, with `-` and `+`), comments,
 Plain scalars follow the YAML 1.2 core schema: `null`, `~` and nothing are `null`; `true` and `false`
 are booleans; integers and floats are numbers (`yes`/`no` are text); everything else is text.
 
-What is **not** read, with an error that says so: anchors and aliases (`&a`, `*a`), tags (`!!str`),
-merge keys (`<<`), complex keys (`? `), tabs for indentation, and a document after the first one
-(`parse_all` reads them all). Numbers are `float`s, so an integer beyond 2^53 loses its last digits.
+Anchors, aliases and merge keys are read: `&name` on a value of a mapping, an item of a sequence or
+an element of a flow collection; `*name` is a copy of that value (the anchor must come first, in the
+same document); `<<: *name` (or `<<: [*a, *b]`) adds the keys of the mappings that it names, and a key
+written next to it wins. `dump` writes none of them: it writes each copy in full.
+
+What is **not** read, with an error that says so: tags (`!!str`), complex keys (`? `), tabs for
+indentation, and a document after the first one (`parse_all` reads them all). Numbers are `float`s, so an integer beyond 2^53 loses its last digits.
 --"
 
 struct Doc
     public lines: array<string>
     public pos: int
+    public anchors: map<string, Json>
+end
+
+-- `&name` at the start of the text: the name and what follows it, or none
+fun take_anchor(text: string) -> (string, string)?
+    if not text.starts_with("&") then
+        return none
+    end
+    let chars = text.chars()
+    let name = ""
+    let i = 1
+    while i < chars.len() and chars[i] != " " do
+        name += chars[i]
+        i += 1
+    end
+    if name == "" then
+        return none
+    end
+    (name, text.substring(i, text.len()).trim())
+end
+
+-- `*name`: a copy of the value that the anchor named earlier
+fun alias_value(doc: Doc, text: string) -> Result<Json, Error>
+    let name = text.substring(1, text.len()).trim()
+    let found = doc.anchors[name]
+    if found == none then
+        return fail<Json>(doc, "the alias `*" + name + "` has no anchor before it")
+    end
+    Ok(found)
 end
 
 fun fail<T>(doc: Doc, message: string) -> Result<T, Error>
@@ -300,8 +333,22 @@ fun flow_value(cur: Cursor) -> Result<Json, Error>
     if c == "'" then
         return Ok(Json.string(single_quoted(cur)?))
     end
-    if c == "&" or c == "*" or c == "!" then
-        return fail<Json>(cur.doc, "anchors, aliases and tags are not supported")
+    if c == "*" or c == "&" then
+        cur.pos += 1
+        let name = ""
+        while cur.more() and cur.peek() != " " and cur.peek() != "," and cur.peek() != "]" and cur.peek() != "\}" do
+            name += cur.peek()
+            cur.pos += 1
+        end
+        if c == "*" then
+            return alias_value(cur.doc, "*" + name)
+        end
+        let v = flow_value(cur)?
+        cur.doc.anchors[name] = v
+        return Ok(v)
+    end
+    if c == "!" then
+        return fail<Json>(cur.doc, "tags are not supported")
     end
     let text = ""
     while cur.more() do
@@ -363,8 +410,17 @@ end
 -- a value written after `key:` or `- `; a flow collection may go on over the next lines
 fun inline_value(doc: Doc, text: string) -> Result<Json, Error>
     let t = strip_comment(text)
-    if t.starts_with("&") or t.starts_with("*") or t.starts_with("!") then
-        return fail<Json>(doc, "anchors, aliases and tags are not supported")
+    if t.starts_with("*") then
+        return alias_value(doc, t)
+    end
+    let anchored = take_anchor(t)
+    if anchored != none then
+        let v = inline_value(doc, anchored.1)?
+        doc.anchors[anchored.0] = v
+        return Ok(v)
+    end
+    if t.starts_with("!") or t.starts_with("&") then
+        return fail<Json>(doc, "tags are not supported")
     end
     if t.starts_with("[") or t.starts_with("\{") then
         while brackets_open(t) > 0 and doc.pos + 1 < doc.lines.len() do
@@ -534,8 +590,8 @@ fun key_text(doc: Doc, raw: string) -> Result<string, Error>
         let cur = Cursor { chars: raw.chars(), pos: 0, doc: doc }
         return single_quoted(cur)
     end
-    if raw.starts_with("? ") or raw.starts_with("&") or raw.starts_with("*") or raw.starts_with("!") or raw == "<<" then
-        return fail<string>(doc, "complex keys, anchors, tags and merge keys are not supported")
+    if raw.starts_with("? ") or raw.starts_with("&") or raw.starts_with("*") or raw.starts_with("!") then
+        return fail<string>(doc, "complex keys, anchors, aliases and tags as keys are not supported")
     end
     Ok(raw)
 end
@@ -588,6 +644,7 @@ end
 
 fun parse_mapping(doc: Doc, ind: int) -> Result<Json, Error>
     let table: map<string, Json> = {}
+    let merged: map<string, Json> = {}
     while true do
         skip_blank(doc)
         if at_end(doc) then
@@ -609,13 +666,24 @@ fun parse_mapping(doc: Doc, ind: int) -> Result<Json, Error>
             end
             return fail<Json>(doc, "expected `key: value`")
         end
-        let key = key_text(doc, parts.0)?
-        if table[key] != none then
-            return fail<Json>(doc, "the key `{key}` is there twice")
+        let is_merge = parts.0 == "<<"
+        let key = "<<"
+        if not is_merge then
+            key = key_text(doc, parts.0)?
+            if table[key] != none then
+                return fail<Json>(doc, "the key `{key}` is there twice")
+            end
         end
         let rest = parts.1
         let value = Json.null()
         let shown = strip_comment(rest)
+        let anchor = ""
+        let anchored = take_anchor(shown)
+        if anchored != none then
+            anchor = anchored.0
+            rest = anchored.1
+            shown = strip_comment(rest)
+        end
         if shown == "" then
             doc.pos += 1
             value = nested(doc, ind, true)?
@@ -625,7 +693,29 @@ fun parse_mapping(doc: Doc, ind: int) -> Result<Json, Error>
             value = inline_value(doc, rest)?
             doc.pos += 1
         end
+        if anchor != "" then
+            doc.anchors[anchor] = value
+        end
+        if is_merge then
+            let sources: array<Json> = if value.is_array() then value.as_array() else [value] end
+            for source in sources do
+                if not source.is_object() then
+                    return fail<Json>(doc, "a merge key `<<` takes a mapping or a list of mappings")
+                end
+                for k, v in source.as_object() do
+                    if merged[k] == none then
+                        merged[k] = v
+                    end
+                end
+            end
+            continue
+        end
         table[key] = value
+    end
+    for k, v in merged do
+        if table[k] == none then
+            table[k] = v
+        end
     end
     Ok(Json.object(table))
 end
@@ -651,7 +741,20 @@ fun parse_sequence(doc: Doc, ind: int) -> Result<Json, Error>
         end
         let after = text.substring(1, text.len())
         let rest = after.trim_start()
-        if strip_comment(rest) == "" then
+        let anchored = take_anchor(strip_comment(rest))
+        if anchored != none and split_key(anchored.1) == none then
+            -- `- &name value`, or `- &name` with the value on the lines below
+            let v = Json.null()
+            if anchored.1 == "" then
+                doc.pos += 1
+                v = nested(doc, ind, false)?
+            else
+                v = inline_value(doc, rest)?
+                doc.pos += 1
+            end
+            doc.anchors[anchored.0] = v
+            items.push(v)
+        elseif strip_comment(rest) == "" then
             doc.pos += 1
             items.push(nested(doc, ind, false)?)
         elseif rest.starts_with("|") or rest.starts_with(">") then
@@ -723,7 +826,7 @@ fun parse_all(text: string) -> Result<array<Json>, Error>
 end
 
 fun parse_lines(lines: array<string>) -> Result<Json, Error>
-    let doc = Doc { lines: lines, pos: 0 }
+    let doc = Doc { lines: lines, pos: 0, anchors: {} }
     let v = parse_block(doc, 0)?
     skip_blank(doc)
     if not at_end(doc) then
