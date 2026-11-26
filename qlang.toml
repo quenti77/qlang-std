@@ -1,5 +1,5 @@
 [package]
-name = "std"
+name = "quenti77/std"
 version = "1.2.0"
 main = "csv.q"
 
