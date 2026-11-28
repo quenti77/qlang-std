@@ -1,5 +1,11 @@
 # Journal des changements
 
+## 1.2.2
+
+Une description pour le registre. Rien ne change dans le code.
+
+- Le `qlang.toml` a maintenant une **`description`** et une **`license`** (MIT) : `qlang search` et le site des paquets les affichent (le paquet n'avait que son nom).
+
 ## 1.2.0
 
 Le câblage d'une application et le YAML des fichiers de configuration réels. Rien de cassant : une fonction ou une structure qui n'était pas un fournisseur utile n'en est plus un.
